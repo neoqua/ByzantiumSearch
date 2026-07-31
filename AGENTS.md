@@ -7,8 +7,8 @@ Cultural History Analysis App — a FastAPI web service that searches travel blo
 ## Repo layout
 
 - `cultural-history-app/` — Python project (FastAPI + SQLAlchemy async + aiosqlite)
-  - `app/` — package: `config.py`, `database.py`, `models.py`, `schemas.py`, `llm.py`, `search.py`, `scraper.py`
-  - `tests/` — pytest tests: `test_llm.py`, `test_search.py`, `test_scraper.py`
+  - `app/` — package: `config.py`, `database.py`, `models.py`, `schemas.py`, `llm.py`, `search.py`, `scraper.py`, `analyzer.py`, `report.py`, `main.py`, `templates/`
+  - `tests/` — pytest tests: `test_llm.py`, `test_search.py`, `test_scraper.py`, `test_api.py`, `test_integration.py`
   - `test_tmp.py` — stray junk at project root (untracked `def test_pass(): assert True`); ignore, do not commit
   - `venv/` — Python 3.13 virtual env (already set up)
   - `requirements.txt` — pinned deps
@@ -27,9 +27,14 @@ Cultural History Analysis App — a FastAPI web service that searches travel blo
 - `dc2a072` — Task 3: Search module (`app/search.py`, `tests/test_search.py`, dep pins)
 - `a378b5a` — Task 4: Scraper (`app/scraper.py`, `tests/test_scraper.py`)
 - `723b31c` — Task 5: Analyzer (`app/analyzer.py`)
+- `9cfc0bb` + `9bf1fcb` — Task 6: API endpoints (`app/main.py`, `app/report.py`, `tests/test_api.py`)
+- `8b6d859` — Task 7: frontend templates (`app/templates/`)
 - `97bb114` — Task 8: SearXNG deployment (`docker-compose.yml`, `searxng/settings.yml`)
+- `9545476` — Task 9: integration tests (`tests/test_integration.py`)
+- `9545476` — Task 10: runtime verification (`data/` DB, uvicorn smoke test)
+- `8d38c2f` — final review fix wave (keyword-aware URL cache, task `failed` state, SSE race, DOM XSS, charset-aware scraping, `load_dotenv`, LLM output coercion)
 
-**Not yet implemented:** API endpoints (`main.py`, `report.py`), frontend templates, integration tests.
+All plan tasks 1–10 complete. `git status` untracked: `.superpowers/` (SDD ledger, self-ignored) and `cultural-history-app/test_tmp.py` (stray junk) — both left uncommitted by design.
 
 ## How to work
 
@@ -38,7 +43,7 @@ Cultural History Analysis App — a FastAPI web service that searches travel blo
   - Pure functions: `.\venv\Scripts\python.exe -c "from app.scraper import extract_text, text_hash; print('OK')"`
   - Async functions needing mocks (httpx/aiohttp): write a throwaway script that monkeypatches `httpx.AsyncClient` — see `C:\Temp\opencode\manual_test_search.py` for a working pattern
   - Imports: `.\venv\Scripts\python.exe -c "from app.config import settings; from app.models import Task; from app.schemas import SearchRequest; print('OK')"`
-- Run app (once `main.py` exists): `uvicorn app.main:app --reload`
+- Run app: `uvicorn app.main:app --reload`
 - Activate venv: `.\venv\Scripts\Activate.ps1` (or call `.\venv\Scripts\python.exe` directly, as above)
 - `.env` requires local SearXNG (port 8888) and LM Studio (port 1234) running
 
