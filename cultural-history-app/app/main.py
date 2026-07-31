@@ -34,7 +34,7 @@ app = FastAPI(title="Cultural History Analyzer", lifespan=lifespan)
 
 @app.get("/", response_class=HTMLResponse)
 async def index(request: Request):
-    return templates.TemplateResponse("index.html", {"request": request})
+    return templates.TemplateResponse(request, "index.html", {})
 
 
 @app.post("/api/search")
@@ -74,8 +74,12 @@ async def task_progress(task_id: str):
             if progress is None:
                 yield f"event: error\ndata: {json.dumps({'error': 'not found'})}\n\n"
                 break
-            if progress["status"] == "completed":
+            status = progress["status"]
+            if status == "completed":
                 yield f"event: done\ndata: {json.dumps({'task_id': task_id, 'redirect': f'/results/{task_id}'})}\n\n"
+                break
+            if status != "processing":
+                yield f"event: error\ndata: {json.dumps({'task_id': task_id, 'status': status})}\n\n"
                 break
 
             yield f"event: progress\ndata: {json.dumps(progress)}\n\n"
@@ -100,8 +104,8 @@ async def task_results(task_id: str, db: AsyncSession = Depends(get_db)):
 async def results_page(request: Request, task_id: str, db: AsyncSession = Depends(get_db)):
     report = await build_report(task_id, db)
     if report is None:
-        return templates.TemplateResponse("results.html", {"request": request, "report": None, "error": "Task not found"})
-    return templates.TemplateResponse("results.html", {"request": request, "report": report, "error": None})
+        return templates.TemplateResponse(request, "results.html", {"report": None, "error": "Task not found"})
+    return templates.TemplateResponse(request, "results.html", {"report": report, "error": None})
 
 
 if __name__ == "__main__":
