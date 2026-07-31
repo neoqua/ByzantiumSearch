@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% block title %}Анализ культурно-исторических объектов{% endblock %}
+{% block content %}
+<h1>Анализ упоминаний культурно-исторических объектов</h1>
+
+<form id="search-form">
+    <label for="object_name">Название объекта *</label>
+    <input type="text" id="object_name" name="object_name" required placeholder="Свято-Климентовский монастырь">
+
+    <label for="keywords">Ключевые слова * (через запятую)</label>
+    <input type="text" id="keywords" name="keywords" required placeholder="Византия, Константинополь, Царьград">
+
+    <label for="annual_visitors">Годовая посещаемость</label>
+    <input type="number" id="annual_visitors" name="annual_visitors" placeholder="10000">
+
+    <label for="manual_urls">Ссылки для обязательной проверки (по одной на строку)</label>
+    <textarea id="manual_urls" name="manual_urls" placeholder="https://example.com/post1"></textarea>
+
+    <button type="submit">Запустить анализ</button>
+</form>
+
+<div id="progress" style="display:none;">
+    <h2>Анализ выполняется...</h2>
+    <div id="progress-status"></div>
+    <div class="progress-bar"><div class="progress-fill" id="progress-fill" style="width:0%"></div></div>
+    <div id="progress-text"></div>
+</div>
+
+<script>
+document.getElementById('search-form').onsubmit = async function(e) {
+    e.preventDefault();
+    const form = e.target;
+    const data = {
+        object_name: form.object_name.value,
+        keywords: form.keywords.value,
+        annual_visitors: form.annual_visitors.value ? parseInt(form.annual_visitors.value) : null,
+        manual_urls: form.manual_urls.value || null,
+    };
+
+    const resp = await fetch('/api/search', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(data),
+    });
+    const result = await resp.json();
+
+    document.getElementById('search-form').style.display = 'none';
+    document.getElementById('progress').style.display = 'block';
+
+    const evtSource = new EventSource(`/api/tasks/${result.task_id}/progress`);
+    evtSource.addEventListener('progress', function(event) {
+        const data = JSON.parse(event.data);
+        const pct = data.total > 0 ? Math.round(data.processed / data.total * 100) : 0;
+        document.getElementById('progress-fill').style.width = pct + '%';
+        document.getElementById('progress-status').innerHTML =
+            `Обработано: ${data.processed} из ${data.total} | Найдено с ключевым словом: ${data.found_keyword}`;
+        document.getElementById('progress-text').innerHTML =
+            data.current_url ? `Текущий: <a href="${data.current_url}" target="_blank">${data.current_title || data.current_url}</a>` : '';
+    });
+    evtSource.addEventListener('done', function(event) {
+        evtSource.close();
+        window.location.href = JSON.parse(event.data).redirect;
+    });
+    evtSource.addEventListener('error', function(event) {
+        evtSource.close();
+        document.getElementById('progress-text').innerHTML = '<div class="error">Ошибка при выполнении анализа</div>';
+    });
+};
+</script>
+{% endblock %}

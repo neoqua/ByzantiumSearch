@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% block title %}Результаты анализа{% endblock %}
+{% block content %}
+
+{% if error %}
+<div class="error">{{ error }}</div>
+<a href="/">Вернуться к форме</a>
+{% elif report %}
+<h1>Результаты анализа</h1>
+
+<p><strong>Объект:</strong> {{ report.object_name }}</p>
+<p><strong>Ключевые слова:</strong> {{ report.keywords }}</p>
+
+<div>
+    <div class="stat">
+        <div class="stat-value">{{ report.total_mentions }}</div>
+        <div class="stat-label">Всего найдено</div>
+    </div>
+    <div class="stat">
+        <div class="stat-value">{{ report.mentions_with_keyword }}</div>
+        <div class="stat-label">С ключевым словом</div>
+    </div>
+    <div class="stat">
+        <div class="stat-value">{{ report.keyword_percentage }}%</div>
+        <div class="stat-label">% с ключевым словом</div>
+    </div>
+    {% if report.percentage_of_visitors is not none %}
+    <div class="stat">
+        <div class="stat-value">{{ report.percentage_of_visitors }}%</div>
+        <div class="stat-label">% от посетителей ({{ report.annual_visitors }}/год)</div>
+    </div>
+    {% endif %}
+</div>
+
+{% if report.results %}
+<table>
+    <thead>
+        <tr>
+            <th>#</th>
+            <th>URL</th>
+            <th>Заголовок</th>
+            <th>Ключевое слово</th>
+            <th>Дата</th>
+            <th>Геопривязка</th>
+            <th>Релев.</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for r in report.results %}
+        <tr>
+            <td>{{ loop.index }}</td>
+            <td><a href="{{ r.url }}" target="_blank">{{ r.url[:50] }}...</a></td>
+            <td>{{ r.title or '—' }}</td>
+            <td>{{ r.keyword_found or '—' }}</td>
+            <td>{{ r.publication_date or r.date_mentioned or '—' }}</td>
+            <td>{{ r.author_location or '—' }}</td>
+            <td>{{ r.relevance_score }}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% else %}
+<p>Результаты не найдены.</p>
+{% endif %}
+
+<a href="/">Новый анализ</a>
+{% endif %}
+{% endblock %}
