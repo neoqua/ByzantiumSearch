@@ -30,6 +30,48 @@ def _build_prompt(object_name: str, keywords: list[str], title: str, text: str) 
     )
 
 
+def _to_bool(value) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.strip().lower() in ("да", "true", "yes")
+    return False
+
+
+def _to_float(value) -> float:
+    if isinstance(value, bool):
+        return 0.0
+    if isinstance(value, (int, float)):
+        return float(value)
+    if isinstance(value, str):
+        try:
+            return float(value.strip().replace(",", "."))
+        except ValueError:
+            return 0.0
+    return 0.0
+
+
+def _to_str_or_none(value) -> Optional[str]:
+    if value is None:
+        return None
+    return value if isinstance(value, str) else str(value)
+
+
+def _coerce_result(data: dict) -> dict:
+    result = dict(data)
+    result["mentions_object"] = _to_bool(result.get("mentions_object"))
+    result["has_keyword"] = _to_bool(result.get("has_keyword"))
+    result["relevance_score"] = _to_float(result.get("relevance_score"))
+    for key in (
+        "keyword_found",
+        "date_mentioned",
+        "publication_date",
+        "author_location",
+    ):
+        result[key] = _to_str_or_none(result.get(key))
+    return result
+
+
 def _parse_response(response_text: str) -> dict:
     text = response_text.strip()
     if text.startswith("```"):
@@ -70,11 +112,12 @@ async def analyze_text_with_retry(
 ) -> dict:
     for attempt in range(max_retries + 1):
         try:
-            return await analyze_text(object_name, keywords, title, text)
+            result = await analyze_text(object_name, keywords, title, text)
+            return _coerce_result(result)
         except Exception as e:
             logger.warning("LLM analysis attempt %d failed: %s", attempt + 1, e)
             if attempt == max_retries:
-                return {
+                return _coerce_result({
                     "mentions_object": False,
                     "has_keyword": False,
                     "keyword_found": None,
@@ -82,4 +125,4 @@ async def analyze_text_with_retry(
                     "publication_date": None,
                     "author_location": None,
                     "relevance_score": 0.0,
-                }
+                })

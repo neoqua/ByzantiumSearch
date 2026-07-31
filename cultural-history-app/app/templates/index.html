@@ -27,6 +27,16 @@
 </div>
 
 <script>
+function safeUrl(value) {
+    if (!value) return null;
+    try {
+        const u = new URL(value, window.location.origin);
+        return (u.protocol === 'http:' || u.protocol === 'https:') ? u.href : null;
+    } catch (e) {
+        return null;
+    }
+}
+
 document.getElementById('search-form').onsubmit = async function(e) {
     e.preventDefault();
     const form = e.target;
@@ -54,8 +64,19 @@ document.getElementById('search-form').onsubmit = async function(e) {
         document.getElementById('progress-fill').style.width = pct + '%';
         document.getElementById('progress-status').innerHTML =
             `Обработано: ${data.processed} из ${data.total} | Найдено с ключевым словом: ${data.found_keyword}`;
-        document.getElementById('progress-text').innerHTML =
-            data.current_url ? `Текущий: <a href="${data.current_url}" target="_blank">${data.current_title || data.current_url}</a>` : '';
+        const progressTextEl = document.getElementById('progress-text');
+        progressTextEl.textContent = '';
+        if (data.current_url) {
+            progressTextEl.textContent = 'Текущий: ';
+            const linkUrl = safeUrl(data.current_url);
+            if (linkUrl) {
+                const link = document.createElement('a');
+                link.href = linkUrl;
+                link.target = '_blank';
+                link.textContent = data.current_title || data.current_url;
+                progressTextEl.appendChild(link);
+            }
+        }
     });
     evtSource.addEventListener('done', function(event) {
         evtSource.close();

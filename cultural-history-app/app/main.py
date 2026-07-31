@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import get_db, init_db
 from app.models import Task
 from app.schemas import SearchRequest
-from app.analyzer import run_analysis, get_progress
+from app.analyzer import run_analysis, get_progress, _progress_store
 from app.report import build_report
 
 logging.basicConfig(level=logging.INFO)
@@ -53,6 +53,15 @@ async def api_search(
     db.add(task)
     await db.commit()
 
+    _progress_store[task.id] = {
+        "status": "pending",
+        "processed": 0,
+        "total": 0,
+        "found_keyword": 0,
+        "current_url": None,
+        "current_title": None,
+    }
+
     background_tasks.add_task(
         run_analysis,
         task.id,
@@ -65,8 +74,11 @@ async def api_search(
 
 
 @app.get("/api/tasks/{task_id}/progress")
-async def task_progress(task_id: str):
-    progress = get_progress(task_id)
+async def task_progress(task_id: str, db: AsyncSession = Depends(get_db)):
+    if get_progress(task_id) is None:
+        task = await db.get(Task, task_id)
+        if task is None:
+            return JSONResponse({"error": "not found"}, status_code=404)
 
     async def event_stream():
         while True:
@@ -78,12 +90,12 @@ async def task_progress(task_id: str):
             if status == "completed":
                 yield f"event: done\ndata: {json.dumps({'task_id': task_id, 'redirect': f'/results/{task_id}'})}\n\n"
                 break
-            if status != "processing":
-                yield f"event: error\ndata: {json.dumps({'task_id': task_id, 'status': status})}\n\n"
-                break
-
-            yield f"event: progress\ndata: {json.dumps(progress)}\n\n"
-            await asyncio.sleep(1)
+            if status in ("processing", "pending"):
+                yield f"event: progress\ndata: {json.dumps(progress)}\n\n"
+                await asyncio.sleep(1)
+                continue
+            yield f"event: error\ndata: {json.dumps({'task_id': task_id, 'status': status})}\n\n"
+            break
 
     return StreamingResponse(
         event_stream(),

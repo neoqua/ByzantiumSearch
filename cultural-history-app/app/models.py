@@ -52,6 +52,7 @@ class UrlCache(Base):
 
     url = Column(String, primary_key=True)
     object_name = Column(String, nullable=False)
+    keywords = Column(Text, nullable=False)
     result_json = Column(Text, nullable=True)
     raw_text_hash = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)

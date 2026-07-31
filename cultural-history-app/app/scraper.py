@@ -34,7 +34,7 @@ async def fetch_page_text(url: str) -> Optional[str]:
                 if resp.status != 200:
                     logger.warning("HTTP %d for %s", resp.status, url)
                     return None
-                html = await resp.text(encoding="utf-8", errors="replace")
+                html = await resp.text()
                 return extract_text(html)
     except Exception as e:
         logger.warning("Failed to fetch %s: %s", url, e)
