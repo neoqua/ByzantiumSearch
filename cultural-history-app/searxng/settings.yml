@@ -1,0 +1,37 @@
+use_default_settings: true
+
+server:
+  secret_key: "change-me-to-a-random-string"
+  bind_address: "0.0.0.0"
+  port: 8080
+
+search:
+  safe_search: 0
+  autocomplete: ""
+  formats:
+    - html
+    - json
+
+engines:
+  - name: google
+    engine: google
+    shortcut: g
+
+  - name: duckduckgo
+    engine: duckduckgo
+    shortcut: ddg
+
+  # Yandex requires API keys from https://xml.yandex.ru
+  # - name: yandex
+  #   engine: yandex
+  #   use_xpath: true
+  #   shortcut: ya
+
+outgoing:
+  request_timeout: 10.0
+  max_request_timeout: 20.0
+  useragent_suffix: ""
+  # If behind a proxy, uncomment:
+  # proxies:
+  #   all://:
+  #     - socks5h://proxy:1080
