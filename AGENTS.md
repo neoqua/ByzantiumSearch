@@ -47,6 +47,15 @@ All plan tasks 1–10 complete. `git status` untracked: `.superpowers/` (SDD led
 - Activate venv: `.\venv\Scripts\Activate.ps1` (or call `.\venv\Scripts\python.exe` directly, as above)
 - `.env` requires local SearXNG (port 8888) and LM Studio (port 1234) running
 
+## Deployment
+
+- Docker mode: `cd cultural-history-app; docker compose up -d --build` — starts SearXNG + app; app at :8000, SearXNG at :8888
+- App container reaches LM Studio on the host via `host.docker.internal:1234`, SearXNG via `http://searxng:8080` (compose network)
+- SQLite persists via `./data:/app/data` volume
+- Host mode: `docker compose up -d searxng` + `uvicorn app.main:app --reload` (config.py defaults point to localhost)
+- No `.env` needed in either mode; `.env.example` documents overrides; do not commit `.env`
+- Docker CLI is absent on the dev machine — Docker artifacts are verified on the target machine (compose YAML validated locally via venv PyYAML)
+
 ## Architecture notes
 
 - Async throughout: `httpx.AsyncClient` for LLM and SearXNG calls, `aiohttp` for page fetching
