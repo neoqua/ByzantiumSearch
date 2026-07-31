@@ -13,5 +13,21 @@ services:
       - SEARXNG_BASE_URL=http://localhost:8888
     restart: unless-stopped
 
+  app:
+    build: .
+    container_name: cultural-history-app
+    ports:
+      - "8000:8000"
+    environment:
+      - SEARXNG_BASE_URL=http://searxng:8080
+      - LM_STUDIO_BASE_URL=http://host.docker.internal:1234
+      - LM_STUDIO_MODEL=meta-llama-3.1-8b-instruct
+      - DATABASE_URL=sqlite+aiosqlite:///./data/app.db
+    volumes:
+      - ./data:/app/data
+    depends_on:
+      - searxng
+    restart: unless-stopped
+
 volumes:
   searxng-data:
