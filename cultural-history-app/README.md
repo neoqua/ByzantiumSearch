@@ -30,16 +30,27 @@ Notes:
 
 ## Host mode (debugging, no container for the app)
 
-Requires Python 3.13 + the venv already set up, SearXNG up via Docker:
+Requires Python 3.13, SearXNG up via Docker:
 
 `docker compose up -d searxng`
 
 then, from `cultural-history-app/`:
 
 ```
-.\venv\Scripts\python.exe -m pip install -r requirements.txt
+python -m venv venv
+```
+
+Activate the venv and install dependencies (Windows: `.\venv\Scripts\Activate.ps1`,
+Mac: `source venv/bin/activate`), then run:
+
+```
+pip install -r requirements.txt
 uvicorn app.main:app --reload
 ```
+
+(Alternatively, skip activation and call the interpreter directly:
+Windows `.\venv\Scripts\python.exe -m pip install -r requirements.txt`,
+Mac `venv/bin/python -m pip install -r requirements.txt`.)
 
 `config.py` defaults already point to `localhost:8888` (SearXNG) and
 `localhost:1234` (LM Studio); create a `.env` only to override (see `.env.example`).
