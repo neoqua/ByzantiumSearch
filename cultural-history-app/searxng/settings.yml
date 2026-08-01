@@ -21,11 +21,12 @@ engines:
     engine: duckduckgo
     shortcut: ddg
 
-  # Yandex requires API keys from https://xml.yandex.ru
-  # - name: yandex
-  #   engine: yandex
-  #   use_xpath: true
-  #   shortcut: ya
+  - name: yandex
+    engine: yandex
+    categories: general
+    search_type: web
+    shortcut: yd
+    disabled: false
 
 outgoing:
   request_timeout: 10.0
