@@ -73,3 +73,24 @@ def test_coerce_result_keeps_valid_values():
     assert result["mentions_object"] is True
     assert result["has_keyword"] is False
     assert result["relevance_score"] == 0.95
+
+
+def test_build_prompt_contains_source_type():
+    prompt = _build_prompt("Test Monastery", ["Byzantium"], "Title", "Text")
+    assert "source_type" in prompt
+    assert "blog/forum/social/official/agency/other" in prompt
+
+
+def test_coerce_result_source_type_valid():
+    result = _coerce_result({"source_type": "blog"})
+    assert result["source_type"] == "blog"
+
+
+def test_coerce_result_source_type_invalid_defaults():
+    result = _coerce_result({"source_type": "музей"})
+    assert result["source_type"] == "other"
+
+
+def test_coerce_result_source_type_missing_defaults():
+    result = _coerce_result({})
+    assert result["source_type"] == "other"

@@ -25,7 +25,8 @@ def _build_prompt(object_name: str, keywords: list[str], title: str, text: str) 
         '  "date_mentioned": "DD.MM.YYYY from text or null",\n'
         '  "publication_date": "DD.MM.YYYY or null",\n'
         '  "author_location": "city, country, region or null",\n'
-        '  "relevance_score": 0.0-1.0\n'
+        '  "relevance_score": 0.0-1.0,\n'
+        '  "source_type": "blog/forum/social/official/agency/other"\n'
         "}"
     )
 
@@ -62,6 +63,11 @@ def _coerce_result(data: dict) -> dict:
     result["mentions_object"] = _to_bool(result.get("mentions_object"))
     result["has_keyword"] = _to_bool(result.get("has_keyword"))
     result["relevance_score"] = _to_float(result.get("relevance_score"))
+    allowed_source_types = {"blog", "forum", "social", "official", "agency", "other"}
+    source_type = result.get("source_type")
+    if source_type not in allowed_source_types:
+        source_type = "other"
+    result["source_type"] = source_type
     for key in (
         "keyword_found",
         "date_mentioned",
@@ -125,4 +131,5 @@ async def analyze_text_with_retry(
                     "publication_date": None,
                     "author_location": None,
                     "relevance_score": 0.0,
+                    "source_type": "other",
                 })
