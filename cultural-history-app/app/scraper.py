@@ -55,11 +55,13 @@ async def fetch_and_analyze(
             "date_mentioned": None,
             "publication_date": None,
             "author_location": None,
+            "source_type": "other",
             "relevance_score": 0.0,
             "raw_text_hash": None,
         }
     h = text_hash(text)
     llm_result = await analyze_text_with_retry(object_name, keywords, title, text)
+    llm_result.setdefault("source_type", "other")
     llm_result["url"] = url
     llm_result["title"] = title
     llm_result["raw_text_hash"] = h

@@ -28,6 +28,7 @@ class AnalysisResult(BaseModel):
     date_mentioned: Optional[str] = None
     publication_date: Optional[str] = None
     author_location: Optional[str] = None
+    source_type: Optional[str] = None
     relevance_score: float = 0.0
 
 
@@ -41,3 +42,4 @@ class ReportData(BaseModel):
     keyword_percentage: float
     percentage_of_visitors: Optional[float]
     results: List[AnalysisResult]
+    status: str = "completed"

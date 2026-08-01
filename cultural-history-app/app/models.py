@@ -40,6 +40,7 @@ class Result(Base):
     date_mentioned = Column(String, nullable=True)
     publication_date = Column(String, nullable=True)
     author_location = Column(String, nullable=True)
+    source_type = Column(String, nullable=True)
     relevance_score = Column(Float, default=0.0)
     raw_text_hash = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)

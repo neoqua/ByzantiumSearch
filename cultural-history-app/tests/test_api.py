@@ -11,6 +11,7 @@ from httpx import AsyncClient, ASGITransport
 from app.main import app
 from app.database import init_db
 from app import main as main_module
+from app.schemas import ReportData, AnalysisResult
 
 
 async def _noop_run_analysis(*args, **kwargs):
@@ -43,3 +44,17 @@ async def test_api_search_returns_task_id(api_client):
     data = resp.json()
     assert "task_id" in data
     assert data["status"] == "pending"
+
+
+def test_report_data_accepts_status():
+    r = ReportData(
+        task_id="t", object_name="o", keywords="k", annual_visitors=None,
+        total_mentions=0, mentions_with_keyword=0, keyword_percentage=0.0,
+        percentage_of_visitors=None, results=[], status="stopped",
+    )
+    assert r.status == "stopped"
+
+
+def test_analysis_result_accepts_source_type():
+    r = AnalysisResult(url="https://x", source_type="blog")
+    assert r.source_type == "blog"
