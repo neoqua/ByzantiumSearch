@@ -16,6 +16,50 @@
     <label for="manual_urls">Ссылки для обязательной проверки (по одной на строку)</label>
     <textarea id="manual_urls" name="manual_urls" placeholder="https://example.com/post1"></textarea>
 
+    <details id="llm-settings">
+        <summary>Настройки подключения LLM</summary>
+        <label>Провайдер
+            <select id="llm-provider">
+                <option value="local">Локальный (LM Studio)</option>
+                <option value="yandex">YandexGPT (Yandex Cloud)</option>
+                <option value="openai">OpenAI-совместимый API</option>
+            </select>
+        </label>
+
+        <div id="fields-local">
+            <label>Эндпоинт</label>
+            <input type="text" id="llm-local-endpoint" value="http://localhost:1234">
+            <label>Модель</label>
+            <input type="text" id="llm-local-model" placeholder="meta-llama-3.1-8b-instruct">
+        </div>
+
+        <div id="fields-yandex" style="display:none;">
+            <label>API-ключ</label>
+            <input type="password" id="llm-yandex-api-key">
+            <label>Эндпоинт</label>
+            <input type="text" id="llm-yandex-endpoint" value="https://llm.api.cloud.yandex.net/foundationModels/v1/completion">
+            <label>Folder ID</label>
+            <input type="text" id="llm-yandex-folder-id">
+            <label>Модель</label>
+            <select id="llm-yandex-model">
+                <option value="yandexgpt-lite">yandexgpt-lite</option>
+                <option value="yandexgpt">yandexgpt</option>
+            </select>
+        </div>
+
+        <div id="fields-openai" style="display:none;">
+            <label>API-ключ</label>
+            <input type="password" id="llm-openai-api-key">
+            <label>Эндпоинт</label>
+            <input type="text" id="llm-openai-endpoint" placeholder="https://api.openai.com/v1">
+            <label>Модель</label>
+            <input type="text" id="llm-openai-model">
+        </div>
+
+        <button type="button" id="llm-test-btn">Проверить подключение</button>
+        <span id="llm-test-result"></span>
+    </details>
+
     <button type="submit">Запустить анализ</button>
 </form>
 
@@ -28,6 +72,59 @@
 </div>
 
 <script>
+const LLM_STORAGE_KEY = 'llm_settings';
+
+function llmShowFields(provider) {
+    document.getElementById('fields-local').style.display = provider === 'local' ? 'block' : 'none';
+    document.getElementById('fields-yandex').style.display = provider === 'yandex' ? 'block' : 'none';
+    document.getElementById('fields-openai').style.display = provider === 'openai' ? 'block' : 'none';
+}
+
+function llmLoadSettings() {
+    const saved = JSON.parse(localStorage.getItem(LLM_STORAGE_KEY) || 'null');
+    if (!saved) { llmShowFields('local'); return; }
+    document.getElementById('llm-provider').value = saved.provider || 'local';
+    if (saved.local) {
+        document.getElementById('llm-local-endpoint').value = saved.local.endpoint || '';
+        document.getElementById('llm-local-model').value = saved.local.model || '';
+    }
+    if (saved.yandex) {
+        document.getElementById('llm-yandex-api-key').value = saved.yandex.api_key || '';
+        document.getElementById('llm-yandex-endpoint').value = saved.yandex.endpoint || '';
+        document.getElementById('llm-yandex-folder-id').value = saved.yandex.folder_id || '';
+        document.getElementById('llm-yandex-model').value = saved.yandex.model || 'yandexgpt-lite';
+    }
+    if (saved.openai) {
+        document.getElementById('llm-openai-api-key').value = saved.openai.api_key || '';
+        document.getElementById('llm-openai-endpoint').value = saved.openai.endpoint || '';
+        document.getElementById('llm-openai-model').value = saved.openai.model || '';
+    }
+    llmShowFields(saved.provider || 'local');
+}
+
+function llmCollectSettings() {
+    const provider = document.getElementById('llm-provider').value;
+    const local = {
+        endpoint: document.getElementById('llm-local-endpoint').value,
+        model: document.getElementById('llm-local-model').value,
+    };
+    const yandex = {
+        api_key: document.getElementById('llm-yandex-api-key').value,
+        endpoint: document.getElementById('llm-yandex-endpoint').value,
+        folder_id: document.getElementById('llm-yandex-folder-id').value,
+        model: document.getElementById('llm-yandex-model').value,
+    };
+    const openai = {
+        api_key: document.getElementById('llm-openai-api-key').value,
+        endpoint: document.getElementById('llm-openai-endpoint').value,
+        model: document.getElementById('llm-openai-model').value,
+    };
+    const stored = { provider: provider, local: local, yandex: yandex, openai: openai };
+    localStorage.setItem(LLM_STORAGE_KEY, JSON.stringify(stored));
+    const active = provider === 'local' ? local : provider === 'yandex' ? yandex : openai;
+    return Object.assign({ provider: provider }, active);
+}
+
 function safeUrl(value) {
     if (!value) return null;
     try {
@@ -46,6 +143,7 @@ document.getElementById('search-form').onsubmit = async function(e) {
         keywords: form.keywords.value,
         annual_visitors: form.annual_visitors.value ? parseInt(form.annual_visitors.value) : null,
         manual_urls: form.manual_urls.value || null,
+        llm_settings: llmCollectSettings(),
     };
 
     const resp = await fetch('/api/search', {
@@ -96,5 +194,36 @@ document.getElementById('search-form').onsubmit = async function(e) {
         document.getElementById('progress-text').innerHTML = '<div class="error">Ошибка при выполнении анализа</div>';
     });
 };
+
+document.getElementById('llm-provider').addEventListener('change', function() {
+    llmShowFields(this.value);
+});
+document.getElementById('llm-test-btn').addEventListener('click', async function() {
+    const btn = this;
+    const resultEl = document.getElementById('llm-test-result');
+    resultEl.textContent = 'Проверка...';
+    btn.disabled = true;
+    try {
+        const resp = await fetch('/api/llm/test', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(llmCollectSettings()),
+        });
+        const body = await resp.json();
+        if (body.ok) {
+            resultEl.textContent = 'Подключение работает';
+            resultEl.style.color = 'green';
+        } else {
+            resultEl.textContent = body.error || 'Ошибка подключения';
+            resultEl.style.color = 'red';
+        }
+    } catch (e) {
+        resultEl.textContent = 'Ошибка запроса';
+        resultEl.style.color = 'red';
+    } finally {
+        btn.disabled = false;
+    }
+});
+llmLoadSettings();
 </script>
 {% endblock %}
