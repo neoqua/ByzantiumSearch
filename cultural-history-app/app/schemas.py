@@ -1,5 +1,14 @@
 from pydantic import BaseModel
-from typing import Optional, List
+from typing import Optional, List, Literal
+
+
+class LLMSettings(BaseModel):
+    provider: Literal["local", "yandex", "openai"] = "local"
+    endpoint: Optional[str] = None
+    model: Optional[str] = None
+    api_key: Optional[str] = None
+    folder_id: Optional[str] = None
+    version: Optional[str] = "latest"
 
 
 class SearchRequest(BaseModel):
@@ -7,6 +16,7 @@ class SearchRequest(BaseModel):
     keywords: str
     annual_visitors: Optional[int] = None
     manual_urls: Optional[str] = None
+    llm_settings: Optional[LLMSettings] = None
 
 
 class TaskStatus(BaseModel):
