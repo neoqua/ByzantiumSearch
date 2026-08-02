@@ -1,6 +1,7 @@
 import os
 import tempfile
 import uuid
+import asyncio
 
 _test_db_path = os.path.join(tempfile.gettempdir(), f"task6_test_api_{uuid.uuid4().hex}.db")
 os.environ["DATABASE_URL"] = f"sqlite+aiosqlite:///{_test_db_path}"
@@ -58,6 +59,44 @@ def test_report_data_accepts_status():
 def test_analysis_result_accepts_source_type():
     r = AnalysisResult(url="https://x", source_type="blog")
     assert r.source_type == "blog"
+
+
+def test_report_build_passes_source_type(monkeypatch):
+    from app.models import Result
+
+    result_row = Result(
+        task_id="t",
+        url="https://x",
+        title="t",
+        mentions_object=True,
+        has_keyword=True,
+        keyword_found="kw",
+        relevance_score=1.0,
+        source_type="blog",
+    )
+
+    class _Task:
+        id = "t"
+        object_name = "o"
+        keywords = "k"
+        annual_visitors = None
+        status = "completed"
+
+    class _Session:
+        async def get(self, model, task_id):
+            return _Task()
+
+        async def execute(self, stmt):
+            class _R:
+                def scalars(self):
+                    class _S:
+                        def all(self):
+                            return [result_row]
+                    return _S()
+            return _R()
+    from app.report import build_report
+    report = asyncio.run(build_report("t", _Session()))
+    assert report.results[0].source_type == "blog"
 
 
 @pytest.mark.asyncio

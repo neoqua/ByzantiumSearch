@@ -32,6 +32,7 @@ async def build_report(task_id: str, session: AsyncSession) -> Optional[ReportDa
             publication_date=r.publication_date,
             author_location=r.author_location,
             relevance_score=r.relevance_score or 0.0,
+            source_type=r.source_type,
         )
         for r in result_rows
     ]
