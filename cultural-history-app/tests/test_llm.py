@@ -94,3 +94,20 @@ def test_coerce_result_source_type_invalid_defaults():
 def test_coerce_result_source_type_missing_defaults():
     result = _coerce_result({})
     assert result["source_type"] == "other"
+
+
+from app.schemas import LLMSettings
+from app.llm_providers import get_provider
+from app import llm
+
+
+def test_analyze_text_accepts_llm_settings():
+    async def run():
+        provider = get_provider(LLMSettings(provider="local"))
+        assert provider is not None
+        # analyze_text signature accepts the optional arg without error when not called over the wire
+        import inspect
+        sig = inspect.signature(llm.analyze_text)
+        assert "llm_settings" in sig.parameters
+    import asyncio
+    asyncio.run(run())

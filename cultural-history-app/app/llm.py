@@ -1,8 +1,9 @@
 import json
 import logging
 from typing import Optional
-import httpx
-from app.config import settings
+
+from app.llm_providers import get_provider
+from app.schemas import LLMSettings
 
 logger = logging.getLogger(__name__)
 
@@ -95,30 +96,31 @@ def _parse_response(response_text: str) -> dict:
 
 
 async def analyze_text(
-    object_name: str, keywords: list[str], title: str, text: str
+    object_name: str,
+    keywords: list[str],
+    title: str,
+    text: str,
+    llm_settings: Optional[LLMSettings] = None,
 ) -> dict:
     prompt = _build_prompt(object_name, keywords, title, text)
-    payload = {
-        "model": settings.lm_studio_model,
-        "messages": [{"role": "user", "content": prompt}],
-        "temperature": 0.1,
-        "max_tokens": 256,
-    }
-    async with httpx.AsyncClient(timeout=60.0) as client:
-        url = f"{settings.lm_studio_base_url}/v1/chat/completions"
-        resp = await client.post(url, json=payload)
-        resp.raise_for_status()
-        data = resp.json()
-        content = data["choices"][0]["message"]["content"]
-        return _parse_response(content)
+    provider = get_provider(llm_settings or LLMSettings(provider="local"))
+    content = await provider.complete(prompt)
+    return _parse_response(content)
 
 
 async def analyze_text_with_retry(
-    object_name: str, keywords: list[str], title: str, text: str, max_retries: int = 2
+    object_name: str,
+    keywords: list[str],
+    title: str,
+    text: str,
+    max_retries: int = 2,
+    llm_settings: Optional[LLMSettings] = None,
 ) -> dict:
     for attempt in range(max_retries + 1):
         try:
-            result = await analyze_text(object_name, keywords, title, text)
+            result = await analyze_text(
+                object_name, keywords, title, text, llm_settings=llm_settings
+            )
             return _coerce_result(result)
         except Exception as e:
             logger.warning("LLM analysis attempt %d failed: %s", attempt + 1, e)
