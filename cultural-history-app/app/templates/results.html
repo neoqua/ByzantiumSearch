@@ -8,6 +8,10 @@
 {% elif report %}
 <h1>Результаты анализа</h1>
 
+{% if report.status == 'stopped' %}
+<div class="error">Анализ остановлен пользователем. Показаны частичные результаты.</div>
+{% endif %}
+
 <p><strong>Объект:</strong> {{ report.object_name }}</p>
 <p><strong>Ключевые слова:</strong> {{ report.keywords }}</p>
 
@@ -39,6 +43,7 @@
             <th>#</th>
             <th>URL</th>
             <th>Заголовок</th>
+            <th>Источник</th>
             <th>Ключевое слово</th>
             <th>Дата</th>
             <th>Геопривязка</th>
@@ -51,6 +56,7 @@
             <td>{{ loop.index }}</td>
             <td><a href="{{ r.url }}" target="_blank">{{ r.url[:50] }}...</a></td>
             <td>{{ r.title or '—' }}</td>
+            <td>{{ r.source_type or '—' }}</td>
             <td>{{ r.keyword_found or '—' }}</td>
             <td>{{ r.publication_date or r.date_mentioned or '—' }}</td>
             <td>{{ r.author_location or '—' }}</td>

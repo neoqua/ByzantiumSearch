@@ -24,6 +24,7 @@
     <div id="progress-status"></div>
     <div class="progress-bar"><div class="progress-fill" id="progress-fill" style="width:0%"></div></div>
     <div id="progress-text"></div>
+    <button type="button" id="stop-btn" style="display:none;">Остановить анализ</button>
 </div>
 
 <script>
@@ -58,6 +59,13 @@ document.getElementById('search-form').onsubmit = async function(e) {
     document.getElementById('progress').style.display = 'block';
 
     const evtSource = new EventSource(`/api/tasks/${result.task_id}/progress`);
+    const stopBtn = document.getElementById('stop-btn');
+    stopBtn.style.display = 'inline-block';
+    stopBtn.onclick = async function() {
+        stopBtn.disabled = true;
+        stopBtn.textContent = 'Остановка...';
+        await fetch(`/api/tasks/${result.task_id}/stop`, {method: 'POST'});
+    };
     evtSource.addEventListener('progress', function(event) {
         const data = JSON.parse(event.data);
         const pct = data.total > 0 ? Math.round(data.processed / data.total * 100) : 0;
@@ -80,6 +88,7 @@ document.getElementById('search-form').onsubmit = async function(e) {
     });
     evtSource.addEventListener('done', function(event) {
         evtSource.close();
+        stopBtn.style.display = 'none';
         window.location.href = JSON.parse(event.data).redirect;
     });
     evtSource.addEventListener('error', function(event) {
