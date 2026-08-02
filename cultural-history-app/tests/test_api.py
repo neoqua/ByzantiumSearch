@@ -124,7 +124,7 @@ async def test_llm_test_endpoint_ok(monkeypatch):
         async def complete(self, prompt):
             return "OK"
 
-    async def fake_get_provider(settings):
+    def fake_get_provider(settings):
         return FakeProvider()
 
     monkeypatch.setattr(main_module, "get_provider", fake_get_provider)
