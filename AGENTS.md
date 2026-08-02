@@ -63,6 +63,7 @@ All plan tasks 1–10 complete. `git status` untracked: `.superpowers/` (SDD led
 - LLM endpoint: `{LM_STUDIO_BASE_URL}/v1/chat/completions` (OpenAI-compatible)
 - LLM temperature=0.1, max_tokens=256 for deterministic fast responses
 - Model: `meta-llama-3.1-8b-instruct` (configurable via `.env`)
+- Remote LLM providers: the app supports local (LM Studio) and remote LLM providers (Yandex Cloud YandexGPT, OpenAI-compatible) selectable on the start page; connection settings live in browser `localStorage` and are sent per-request; `POST /api/llm/test` validates a connection
 - Prompt engineering: strict JSON-only responses, parseable via `_parse_response()`
 - DB schema: `tasks`, `results`, `url_cache` tables
 - SearXNG client (`app/search.py`): queries format `{object_name}` and `{object_name} {keyword}` with dedup, language=ru-RU; search now expands queries with UGC markers (`отзывы, блог, форум, впечатления`) and sorts results by heuristic source type (UGC first); LLM returns authoritative `source_type`; stop endpoint (`POST /api/tasks/{id}/stop`) marks task `stopped`
