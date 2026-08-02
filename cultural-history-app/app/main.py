@@ -73,6 +73,15 @@ async def api_search(
     return {"task_id": task.id, "status": "pending"}
 
 
+@app.post("/api/tasks/{task_id}/stop")
+async def stop_task(task_id: str):
+    progress = get_progress(task_id)
+    if progress is None:
+        return JSONResponse({"error": "not found"}, status_code=404)
+    progress["stop_requested"] = True
+    return {"status": "stopping"}
+
+
 @app.get("/api/tasks/{task_id}/progress")
 async def task_progress(task_id: str, db: AsyncSession = Depends(get_db)):
     if get_progress(task_id) is None:
@@ -87,7 +96,7 @@ async def task_progress(task_id: str, db: AsyncSession = Depends(get_db)):
                 yield f"event: error\ndata: {json.dumps({'error': 'not found'})}\n\n"
                 break
             status = progress["status"]
-            if status == "completed":
+            if status in ("completed", "stopped"):
                 yield f"event: done\ndata: {json.dumps({'task_id': task_id, 'redirect': f'/results/{task_id}'})}\n\n"
                 break
             if status in ("processing", "pending"):

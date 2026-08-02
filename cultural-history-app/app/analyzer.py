@@ -95,9 +95,14 @@ async def run_analysis(
         processed = 0
         found_keyword = 0
         cache_keywords = _cache_keywords(keywords)
+        stopped = False
 
         async with async_session() as session:
             for entry in all_urls:
+                if _progress_store[task_id].get("stop_requested"):
+                    stopped = True
+                    break
+
                 url = entry["url"]
                 title = entry["title"]
 
@@ -170,6 +175,7 @@ async def run_analysis(
                     author_location=llm_data.get("author_location"),
                     relevance_score=llm_data.get("relevance_score", 0.0),
                     raw_text_hash=llm_data.get("raw_text_hash"),
+                    source_type=llm_data.get("source_type", "other"),
                 )
                 session.add(result_entry)
                 await session.commit()
@@ -183,11 +189,11 @@ async def run_analysis(
             # Update task status
             task = await session.get(Task, task_id)
             if task:
-                task.status = "completed"
+                task.status = "stopped" if stopped else "completed"
                 task.completed_at = datetime.utcnow()
                 await session.commit()
 
-        _progress_store[task_id]["status"] = "completed"
+        _progress_store[task_id]["status"] = "stopped" if stopped else "completed"
     except Exception as e:
         logger.exception("Analysis failed for task %s: %s", task_id, e)
         await _mark_task_failed(task_id)

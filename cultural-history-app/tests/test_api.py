@@ -58,3 +58,22 @@ def test_report_data_accepts_status():
 def test_analysis_result_accepts_source_type():
     r = AnalysisResult(url="https://x", source_type="blog")
     assert r.source_type == "blog"
+
+
+@pytest.mark.asyncio
+async def test_stop_returns_stopping(api_client):
+    resp = await api_client.post("/api/tasks/nonexistent/stop")
+    assert resp.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_stop_sets_flag(api_client):
+    resp = await api_client.post("/api/search", json={
+        "object_name": "Obj", "keywords": "kw",
+    })
+    task_id = resp.json()["task_id"]
+    stop = await api_client.post(f"/api/tasks/{task_id}/stop")
+    assert stop.status_code == 200
+    assert stop.json()["status"] == "stopping"
+    from app.analyzer import _progress_store
+    assert _progress_store[task_id]["stop_requested"] is True
