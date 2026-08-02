@@ -8,6 +8,13 @@ from app.schemas import LLMSettings
 logger = logging.getLogger(__name__)
 
 
+def _chat_completions_url(endpoint: str) -> str:
+    base = endpoint.rstrip("/")
+    if base.endswith("/v1"):
+        return f"{base}/chat/completions"
+    return f"{base}/v1/chat/completions"
+
+
 class LLMProvider(ABC):
     @abstractmethod
     async def complete(self, prompt: str) -> str:
@@ -27,7 +34,7 @@ class LocalOpenAIProvider(LLMProvider):
             "max_tokens": 256,
         }
         async with httpx.AsyncClient(timeout=60.0) as client:
-            url = f"{self.endpoint.rstrip('/')}/v1/chat/completions"
+            url = _chat_completions_url(self.endpoint)
             resp = await client.post(url, json=payload)
             resp.raise_for_status()
             data = resp.json()
@@ -49,7 +56,7 @@ class GenericOpenAIProvider(LLMProvider):
         }
         headers = {"Authorization": f"Bearer {self.api_key}"}
         async with httpx.AsyncClient(timeout=60.0) as client:
-            url = f"{self.endpoint.rstrip('/')}/v1/chat/completions"
+            url = _chat_completions_url(self.endpoint)
             resp = await client.post(url, json=payload, headers=headers)
             resp.raise_for_status()
             data = resp.json()
