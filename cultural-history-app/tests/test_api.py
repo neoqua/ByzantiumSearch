@@ -116,3 +116,32 @@ async def test_stop_sets_flag(api_client):
     assert stop.json()["status"] == "stopping"
     from app.analyzer import _progress_store
     assert _progress_store[task_id]["stop_requested"] is True
+
+
+@pytest.mark.asyncio
+async def test_llm_test_endpoint_ok(monkeypatch):
+    class FakeProvider:
+        async def complete(self, prompt):
+            return "OK"
+
+    async def fake_get_provider(settings):
+        return FakeProvider()
+
+    monkeypatch.setattr(main_module, "get_provider", fake_get_provider)
+    from app.main import app as main_app
+    transport = ASGITransport(app=main_app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        resp = await client.post("/api/llm/test", json={
+            "provider": "yandex", "api_key": "k", "folder_id": "f",
+        })
+    assert resp.status_code == 200
+    assert resp.json()["ok"] is True
+
+
+@pytest.mark.asyncio
+async def test_llm_test_endpoint_invalid(api_client):
+    resp = await api_client.post("/api/llm/test", json={
+        "provider": "openai", "endpoint": "https://x/v1", "model": "m",
+    })
+    assert resp.status_code == 400
+    assert resp.json()["ok"] is False

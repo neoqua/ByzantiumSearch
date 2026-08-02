@@ -12,9 +12,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db, init_db
 from app.models import Task
-from app.schemas import SearchRequest
+from app.schemas import SearchRequest, LLMSettings
 from app.analyzer import run_analysis, get_progress, _progress_store
 from app.report import build_report
+from app.llm_providers import get_provider
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -68,9 +69,23 @@ async def api_search(
         body.object_name,
         body.keywords,
         body.manual_urls,
+        body.llm_settings,
     )
 
     return {"task_id": task.id, "status": "pending"}
+
+
+@app.post("/api/llm/test")
+async def test_llm_connection(body: LLMSettings):
+    try:
+        provider = get_provider(body)
+    except ValueError as e:
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=400)
+    try:
+        await provider.complete("Say OK")
+        return {"ok": True}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
 
 
 @app.post("/api/tasks/{task_id}/stop")

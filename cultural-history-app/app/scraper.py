@@ -4,6 +4,7 @@ from typing import Optional
 import aiohttp
 from bs4 import BeautifulSoup
 from app.llm import analyze_text_with_retry
+from app.schemas import LLMSettings
 
 logger = logging.getLogger(__name__)
 
@@ -42,7 +43,8 @@ async def fetch_page_text(url: str) -> Optional[str]:
 
 
 async def fetch_and_analyze(
-    url: str, object_name: str, keywords: list[str], title: str
+    url: str, object_name: str, keywords: list[str], title: str,
+    llm_settings: Optional[LLMSettings] = None,
 ) -> dict:
     text = await fetch_page_text(url)
     if not text:
@@ -60,7 +62,9 @@ async def fetch_and_analyze(
             "raw_text_hash": None,
         }
     h = text_hash(text)
-    llm_result = await analyze_text_with_retry(object_name, keywords, title, text)
+    llm_result = await analyze_text_with_retry(
+        object_name, keywords, title, text, llm_settings=llm_settings
+    )
     llm_result.setdefault("source_type", "other")
     llm_result["url"] = url
     llm_result["title"] = title

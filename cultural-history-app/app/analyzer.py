@@ -13,6 +13,7 @@ from app.models import Task, Result, UrlCache
 from app.search import search_urls
 from app.scraper import fetch_and_analyze
 from app.llm import analyze_text_with_retry
+from app.schemas import LLMSettings
 
 logger = logging.getLogger(__name__)
 
@@ -54,6 +55,7 @@ async def run_analysis(
     object_name: str,
     keywords_raw: str,
     manual_urls_raw: Optional[str] = None,
+    llm_settings: Optional[LLMSettings] = None,
 ):
     keywords = _split_keywords(keywords_raw)
     manual_urls = _split_urls(manual_urls_raw)
@@ -121,7 +123,9 @@ async def run_analysis(
                     llm_data = json.loads(cached.result_json) if cached.result_json else {}
                 else:
                     # Analyze for ALL keywords in one LLM call
-                    llm_data = await fetch_and_analyze(url, object_name, keywords, title)
+                    llm_data = await fetch_and_analyze(
+                        url, object_name, keywords, title, llm_settings=llm_settings
+                    )
                     if cached:
                         cached.object_name = object_name
                         cached.keywords = cache_keywords
