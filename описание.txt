@@ -1,0 +1,32 @@
+Ветка deployment-packaging слита в master (fast-forward, 0c402ba..851135f), удалена, рабочее дерево чистое.
+
+Итог — пакет деплоя в master:
+
+Dockerfile + .dockerignore — приложение собирается в образ (python:3.13-slim)
+docker-compose.yml — сервис app (порт 8000) + searxng (8888), volume ./data:/app/data, LM Studio через host.docker.internal:1234
+.env убран из git, добавлены .env.example и запись в .gitignore
+README.md — runbook обоих режимов (Docker + host)
+AGENTS.md — секция Deployment
+Коммит 0c402ba — charset-фикс scraper.py (перед веткой)
+Перенос на целевую машину: скопировать репозиторий (без venv/, data/), запустить LM Studio на хосте, затем cd cultural-history-app; docker compose up -d --build. Единственный непроверенный здесь шаг — реальная сборка образа и доступ к LM Studio через host.docker.internal (проверяется на целевой машине).
+
+cultural-history-app/DEPLOYMENT.md — чеклист переноса: перенос репозитория, Docker Desktop, LM Studio (порт 1234, модель), запуск docker compose up -d --build, сквозная проверка, таблица типовых проблем и host-режим.
+
+Для Docker-режима (основной) на целевой машине нужны всего две вещи:
+
+1. Docker Desktop (Windows/Mac)
+
+Один раз: cd cultural-history-app; docker compose up -d --build
+Образы подтянутся сами: searxng/searxng:latest + сборка приложения из Dockerfile
+Никакого Python, Node и т.д. не требуется
+2. LM Studio (на хосте)
+
+Установить LM Studio, скачать модель meta-llama-3.1-8b-instruct (можно загрузить в интерфейсе)
+Запустить локальный сервер на порту 1234: вкладка "Local Server" → Start server
+Проверка: http://localhost:1234/v1/models должен отвечать
+Важно: сервер должен принимать соединения с Docker Desktop NAT (стандартно для LM Studio; host.docker.internal пробросит трафик из контейнера)
+После этого: открыть http://localhost:8000 и запустить поиск.
+
+Сам репозиторий — просто скопировать (zip, git clone), без venv/ и data/ (создастся при первом запуске через volume). Файл .env не нужен — конфиг берётся из docker-compose.yml.
+
+Для host-режима (отладка) дополнительно: Python 3.13 + python -m venv venv + pip install -r requirements.txt — подробности в cultural-history-app/README.md.
