@@ -65,7 +65,7 @@ All plan tasks 1–10 complete. `git status` untracked: `.superpowers/` (SDD led
 - Model: `meta-llama-3.1-8b-instruct` (configurable via `.env`)
 - Prompt engineering: strict JSON-only responses, parseable via `_parse_response()`
 - DB schema: `tasks`, `results`, `url_cache` tables
-- SearXNG client (`app/search.py`): queries format `{object_name}` and `{object_name} {keyword}` with dedup, language=ru-RU
+- SearXNG client (`app/search.py`): queries format `{object_name}` and `{object_name} {keyword}` with dedup, language=ru-RU; search now expands queries with UGC markers (`отзывы, блог, форум, впечатления`) and sorts results by heuristic source type (UGC first); LLM returns authoritative `source_type`; stop endpoint (`POST /api/tasks/{id}/stop`) marks task `stopped`
 
 ## Version pinning
 
