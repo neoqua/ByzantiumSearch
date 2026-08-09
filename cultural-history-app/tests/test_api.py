@@ -81,6 +81,7 @@ def test_report_build_passes_source_type(monkeypatch):
         keywords = "k"
         annual_visitors = None
         status = "completed"
+        search_engine = "searxng"
 
     class _Session:
         async def get(self, model, task_id):
@@ -145,3 +146,45 @@ async def test_llm_test_endpoint_invalid(api_client):
     })
     assert resp.status_code == 400
     assert resp.json()["ok"] is False
+
+
+@pytest.mark.asyncio
+async def test_api_search_persists_search_engine(api_client):
+    resp = await api_client.post("/api/search", json={
+        "object_name": "Obj", "keywords": "kw", "search_engine": "openserp",
+    })
+    assert resp.status_code == 200
+    task_id = resp.json()["task_id"]
+    from app.database import async_session
+    from app.models import Task
+    async with async_session() as s:
+        task = await s.get(Task, task_id)
+        assert task.search_engine == "openserp"
+
+
+@pytest.mark.asyncio
+async def test_api_search_forwards_search_engine(api_client):
+    calls = []
+    orig = main_module.run_analysis
+
+    async def capture(*args, **kwargs):
+        calls.append((args, kwargs))
+
+    main_module.run_analysis = capture
+    try:
+        resp = await api_client.post("/api/search", json={
+            "object_name": "Obj", "keywords": "kw", "search_engine": "openserp",
+        })
+    finally:
+        main_module.run_analysis = orig
+    assert resp.status_code == 200
+    assert calls and calls[0][0][5] == "openserp"  # 6th positional arg (search_engine) to add_task
+
+
+def test_report_data_carries_search_engine():
+    r = ReportData(
+        task_id="t", object_name="o", keywords="k", annual_visitors=None,
+        total_mentions=0, mentions_with_keyword=0, keyword_percentage=0.0,
+        percentage_of_visitors=None, results=[], search_engine="openserp",
+    )
+    assert r.search_engine == "openserp"

@@ -49,6 +49,7 @@ async def api_search(
         keywords=body.keywords,
         annual_visitors=body.annual_visitors,
         manual_urls=body.manual_urls,
+        search_engine=body.search_engine,
         status="pending",
     )
     db.add(task)
@@ -70,6 +71,7 @@ async def api_search(
         body.keywords,
         body.manual_urls,
         body.llm_settings,
+        body.search_engine,
     )
 
     return {"task_id": task.id, "status": "pending"}

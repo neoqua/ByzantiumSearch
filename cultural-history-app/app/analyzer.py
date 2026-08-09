@@ -56,6 +56,7 @@ async def run_analysis(
     keywords_raw: str,
     manual_urls_raw: Optional[str] = None,
     llm_settings: Optional[LLMSettings] = None,
+    search_engine: str = "searxng",
 ):
     keywords = _split_keywords(keywords_raw)
     manual_urls = _split_urls(manual_urls_raw)
@@ -80,7 +81,7 @@ async def run_analysis(
         # Step 1: Search
         all_urls = []
         try:
-            search_results = await search_urls(object_name, keywords)
+            search_results = await search_urls(object_name, keywords, engine=search_engine)
             for item in search_results:
                 all_urls.append(item)
         except Exception as e:

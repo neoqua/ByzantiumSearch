@@ -48,4 +48,5 @@ async def build_report(task_id: str, session: AsyncSession) -> Optional[ReportDa
         percentage_of_visitors=visitor_pct,
         results=results_list,
         status=task.status,
+        search_engine=task.search_engine,
     )
