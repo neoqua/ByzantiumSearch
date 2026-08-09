@@ -20,7 +20,7 @@
 - Commit style: short messages `feat:`, `fix:`, `docs:`; commit only the task's files. Never commit `.env`, `.superpowers/`, `test_tmp.py`, or throwaway scripts in `C:\Temp\opencode`.
 - `.env.example` documents overrides; `.env` is never committed.
 - No Docker CLI on the dev machine — `docker-compose.yml` is validated with the venv's PyYAML, never by running docker.
-- OpenSERP megasearch response is the v2 envelope: `{results: [{url, title, snippet, rank, domain, engine}], pagination: {page, has_more, next_start}}`. The exact megasearch endpoint path/params must be confirmed against OpenSERP v2 docs during Task 2; the plan assumes `GET {base}/search` with `text`, `engines`, `mode`, `limit`, `start` and falls back to per-engine endpoints if needed (single-engine form is `GET /{engine}/search`).
+- OpenSERP megasearch response is the v2 envelope: `{results: [{url, title, snippet, rank, domain, engine}], pagination: {page, has_more, next_start}}`. CONFIRMED during Task 2 (2026-08-09, karust/openserp README): megasearch endpoint is `GET {base}/mega/search` with `text`, `engines`, `mode` (`balanced`|`fast`|`any`), `limit` (max 100), `start` (offset 0/10/20); available engines `google,yandex,baidu,bing,duckduckgo,ecosia`; megasearch dedups by normalized URL and returns `clusters`.
 
 ---
 
@@ -408,7 +408,7 @@ async def _search_openserp(object_name: str, keywords: List[str]) -> List[Dict[s
                         "start": start,
                     }
                     resp = await client.get(
-                        f"{settings.openserp_base_url}/search", params=params
+                        f"{settings.openserp_base_url}/mega/search", params=params
                     )
                     resp.raise_for_status()
                     data = resp.json()
