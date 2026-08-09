@@ -19,21 +19,21 @@ async def init_db():
         await conn.run_sync(_ensure_tasks_search_engine)
 
 
-def _ensure_results_source_type(sync_conn):
+def _ensure_column(sync_conn, table, column, ddl):
     from sqlalchemy import inspect
     insp = inspect(sync_conn)
-    if "results" not in insp.get_table_names():
+    if table not in insp.get_table_names():
         return
-    cols = {c["name"] for c in insp.get_columns("results")}
-    if "source_type" not in cols:
-        sync_conn.execute(text("ALTER TABLE results ADD COLUMN source_type VARCHAR(20)"))
+    cols = {c["name"] for c in insp.get_columns(table)}
+    if column not in cols:
+        sync_conn.execute(text(ddl))
+
+
+def _ensure_results_source_type(sync_conn):
+    _ensure_column(sync_conn, "results", "source_type",
+                   "ALTER TABLE results ADD COLUMN source_type VARCHAR(20)")
 
 
 def _ensure_tasks_search_engine(sync_conn):
-    from sqlalchemy import inspect
-    insp = inspect(sync_conn)
-    if "tasks" not in insp.get_table_names():
-        return
-    cols = {c["name"] for c in insp.get_columns("tasks")}
-    if "search_engine" not in cols:
-        sync_conn.execute(text("ALTER TABLE tasks ADD COLUMN search_engine VARCHAR(10) DEFAULT 'searxng'"))
+    _ensure_column(sync_conn, "tasks", "search_engine",
+                   "ALTER TABLE tasks ADD COLUMN search_engine VARCHAR(10) DEFAULT 'searxng'")
