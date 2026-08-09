@@ -60,6 +60,13 @@
         <span id="llm-test-result"></span>
     </details>
 
+    <label>Поисковый движок
+        <select id="search-engine">
+            <option value="searxng">SearXNG</option>
+            <option value="openserp">OpenSERP</option>
+        </select>
+    </label>
+
     <button type="submit">Запустить анализ</button>
 </form>
 
@@ -73,6 +80,19 @@
 
 <script>
 const LLM_STORAGE_KEY = 'llm_settings';
+
+const SEARCH_ENGINE_STORAGE_KEY = 'search_engine';
+
+function searchEngineLoad() {
+    const saved = localStorage.getItem(SEARCH_ENGINE_STORAGE_KEY);
+    if (saved === 'openserp' || saved === 'searxng') {
+        document.getElementById('search-engine').value = saved;
+    }
+}
+
+function searchEngineSave() {
+    localStorage.setItem(SEARCH_ENGINE_STORAGE_KEY, document.getElementById('search-engine').value);
+}
 
 function llmShowFields(provider) {
     document.getElementById('fields-local').style.display = provider === 'local' ? 'block' : 'none';
@@ -144,6 +164,7 @@ document.getElementById('search-form').onsubmit = async function(e) {
         annual_visitors: form.annual_visitors.value ? parseInt(form.annual_visitors.value) : null,
         manual_urls: form.manual_urls.value || null,
         llm_settings: llmCollectSettings(),
+        search_engine: document.getElementById('search-engine').value,
     };
 
     const resp = await fetch('/api/search', {
@@ -225,5 +246,7 @@ document.getElementById('llm-test-btn').addEventListener('click', async function
     }
 });
 llmLoadSettings();
+document.getElementById('search-engine').addEventListener('change', searchEngineSave);
+searchEngineLoad();
 </script>
 {% endblock %}
