@@ -58,3 +58,16 @@ async def test_search_urls_deduplicates(httpx_mock):
 
     results = await search_urls("Test", ["kw"])
     assert len(results) == 2
+
+
+@pytest.mark.asyncio
+async def test_search_urls_defaults_to_searxng(httpx_mock):
+    def respond(request):
+        assert request.url.params["pageno"] == "1"
+        return httpx.Response(200, json={"results": [
+            {"url": "https://example.com/x", "title": "X"},
+        ]})
+
+    httpx_mock.add_callback(respond)
+    results = await search_urls("Test", ["k"])
+    assert results[0]["url"] == "https://example.com/x"
