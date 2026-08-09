@@ -13,6 +13,13 @@ services:
       - SEARXNG_BASE_URL=http://localhost:8888
     restart: unless-stopped
 
+  openserp:
+    image: karust/openserp
+    container_name: openserp
+    ports:
+      - "7000:7000"
+    restart: unless-stopped
+
   app:
     build: .
     container_name: cultural-history-app
@@ -22,11 +29,15 @@ services:
       - SEARXNG_BASE_URL=http://searxng:8080
       - LM_STUDIO_BASE_URL=http://host.docker.internal:1234
       - LM_STUDIO_MODEL=meta-llama-3.1-8b-instruct
+      - OPENSERP_BASE_URL=http://openserp:7000
+      - SEARCH_MAX_PAGES=2
+      - OPENSERP_RESULTS_LIMIT=50
       - DATABASE_URL=sqlite+aiosqlite:///./data/app.db
     volumes:
       - ./data:/app/data
     depends_on:
       - searxng
+      - openserp
     restart: unless-stopped
 
 volumes:

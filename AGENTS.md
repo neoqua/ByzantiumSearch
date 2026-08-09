@@ -66,7 +66,7 @@ All plan tasks 1–10 complete. `git status` untracked: `.superpowers/` (SDD led
 - Remote LLM providers: the app supports local (LM Studio) and remote LLM providers (Yandex Cloud YandexGPT, OpenAI-compatible) selectable on the start page; connection settings live in browser `localStorage` and are sent per-request; `POST /api/llm/test` validates a connection
 - Prompt engineering: strict JSON-only responses, parseable via `_parse_response()`
 - DB schema: `tasks`, `results`, `url_cache` tables
-- SearXNG client (`app/search.py`): queries format `{object_name}` and `{object_name} {keyword}` with dedup, language=ru-RU; search now expands queries with UGC markers (`отзывы, блог, форум, впечатления`) and sorts results by heuristic source type (UGC first); LLM returns authoritative `source_type`; stop endpoint (`POST /api/tasks/{id}/stop`) marks task `stopped`
+- SearXNG client (`app/search.py`): queries format `{object_name}` and `{object_name} {keyword}` with dedup, language=ru-RU; search now expands queries with UGC markers (`отзывы, блог, форум, впечатления`) and sorts results by heuristic source type (UGC first); search backend is selectable per request (SearXNG or OpenSERP megasearch) via `SearchRequest.search_engine`, stored on the task, and shown in the report header; pagination controlled by `SEARCH_MAX_PAGES` (SearXNG) and `OPENSERP_RESULTS_LIMIT` (OpenSERP); LLM returns authoritative `source_type`; stop endpoint (`POST /api/tasks/{id}/stop`) marks task `stopped`
 
 ## Version pinning
 
