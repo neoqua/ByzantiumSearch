@@ -658,7 +658,7 @@ asyncio.run(init_db())
 
 async def seed_task():
     async with async_session() as s:
-        s.add(Task(id="t1", object_name="Obj", keywords="kw"))
+        s.add(Task(id="t1", object_name="Obj", keywords="kw", search_engine="openserp"))
         await s.commit()
 
 asyncio.run(seed_task())
@@ -687,12 +687,16 @@ assert seen.get("engine") == "openserp", seen
 
 from app.database import async_session
 from app.models import Task, Result
-async with async_session() as s:
-    task = await s.get(Task, "t1")
-    assert task.search_engine == "openserp", task.search_engine
-    rows = (await s.execute(__import__("sqlalchemy").select(Result).where(Result.task_id == "t1"))).scalars().all()
-    assert len(rows) == 1
-    assert rows[0].mentions_object is True
+
+async def check():
+    async with async_session() as s:
+        task = await s.get(Task, "t1")
+        assert task.search_engine == "openserp", task.search_engine
+        rows = (await s.execute(__import__("sqlalchemy").select(Result).where(Result.task_id == "t1"))).scalars().all()
+        assert len(rows) == 1
+        assert rows[0].mentions_object is True
+
+asyncio.run(check())
 
 print("THREADING: PASS")
 ```
