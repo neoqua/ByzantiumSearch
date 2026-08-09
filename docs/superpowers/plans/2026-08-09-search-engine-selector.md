@@ -895,10 +895,15 @@ asyncio.run(init_db())
 
 async def seed_task():
     async with async_session() as s:
-        s.add(Task(id="e1", object_name="Объект", keywords="впечатления"))
+        s.add(Task(id="e1", object_name="Объект", keywords="впечатления", search_engine="openserp"))
         await s.commit()
 
 asyncio.run(seed_task())
+
+# NOTE: the Task is seeded with search_engine="openserp" because run_analysis
+# forwards but does NOT persist search_engine (api_search persists it). The
+# assert below then proves the seeded value survives run_analysis untouched,
+# and `seen["engine"] == "openserp"` proves the forwarding.
 
 seen = {}
 
