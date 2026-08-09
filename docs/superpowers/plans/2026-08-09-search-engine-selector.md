@@ -937,13 +937,17 @@ assert seen.get("n_queries", 0) >= 2, seen
 
 from app.models import Result
 from sqlalchemy import select
-async with async_session() as s:
-    task = await s.get(Task, "e1")
-    assert task.search_engine == "openserp"
-    assert task.status == "completed"
-    rows = (await s.execute(select(Result).where(Result.task_id == "e1"))).scalars().all()
-    assert len(rows) == 2
-    assert all(r.mentions_object for r in rows)
+
+async def verify():
+    async with async_session() as s:
+        task = await s.get(Task, "e1")
+        assert task.search_engine == "openserp"
+        assert task.status == "completed"
+        rows = (await s.execute(select(Result).where(Result.task_id == "e1"))).scalars().all()
+        assert len(rows) == 2
+        assert all(r.mentions_object for r in rows)
+
+asyncio.run(verify())
 
 print("SEARCH_E2E: PASS (run_analysis with engine=openserp)")
 ```
