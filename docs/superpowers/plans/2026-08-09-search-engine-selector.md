@@ -568,7 +568,7 @@ async def test_api_search_forwards_search_engine(api_client):
     finally:
         main_module.run_analysis = orig
     assert resp.status_code == 200
-    assert calls and calls[0][1].get("search_engine") == "openserp"
+    assert calls and calls[0][0][5] == "openserp"  # 6th positional arg (search_engine) to add_task
 
 
 def test_report_data_carries_search_engine():
