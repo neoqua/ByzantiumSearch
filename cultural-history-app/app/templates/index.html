@@ -27,8 +27,8 @@
         </label>
 
         <div id="fields-local">
-            <label>Эндпоинт</label>
-            <input type="text" id="llm-local-endpoint" value="http://localhost:1234">
+            <label>Эндпоинт (пусто = по умолчанию из настроек сервера)</label>
+            <input type="text" id="llm-local-endpoint" placeholder="http://localhost:1234">
             <label>Модель</label>
             <input type="text" id="llm-local-model" placeholder="meta-llama-3.1-8b-instruct">
         </div>
@@ -94,6 +94,11 @@ function searchEngineSave() {
     localStorage.setItem(SEARCH_ENGINE_STORAGE_KEY, document.getElementById('search-engine').value);
 }
 
+function llmNormalizeLocalEndpoint(value) {
+    const v = (value || '').trim().replace(/\/+$/, '');
+    return (v === '' || v === 'http://localhost:1234' || v === 'http://127.0.0.1:1234') ? '' : v;
+}
+
 function llmShowFields(provider) {
     document.getElementById('fields-local').style.display = provider === 'local' ? 'block' : 'none';
     document.getElementById('fields-yandex').style.display = provider === 'yandex' ? 'block' : 'none';
@@ -105,7 +110,7 @@ function llmLoadSettings() {
     if (!saved) { llmShowFields('local'); return; }
     document.getElementById('llm-provider').value = saved.provider || 'local';
     if (saved.local) {
-        document.getElementById('llm-local-endpoint').value = saved.local.endpoint || '';
+        document.getElementById('llm-local-endpoint').value = llmNormalizeLocalEndpoint(saved.local.endpoint || '');
         document.getElementById('llm-local-model').value = saved.local.model || '';
     }
     if (saved.yandex) {
@@ -125,7 +130,7 @@ function llmLoadSettings() {
 function llmCollectSettings() {
     const provider = document.getElementById('llm-provider').value;
     const local = {
-        endpoint: document.getElementById('llm-local-endpoint').value,
+        endpoint: llmNormalizeLocalEndpoint(document.getElementById('llm-local-endpoint').value),
         model: document.getElementById('llm-local-model').value,
     };
     const yandex = {

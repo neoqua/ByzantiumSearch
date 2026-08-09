@@ -1,6 +1,10 @@
 {% extends "base.html" %}
 {% block title %}Результаты анализа{% endblock %}
 {% block content %}
+<style>
+    body { max-width: none; }
+    .container { width: fit-content; min-width: 100%; }
+</style>
 
 {% if error %}
 <div class="error">{{ error }}</div>
