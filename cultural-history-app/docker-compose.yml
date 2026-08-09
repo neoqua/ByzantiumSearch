@@ -16,6 +16,7 @@ services:
   openserp:
     image: karust/openserp
     container_name: openserp
+    command: serve -a 0.0.0.0 -p 7000
     ports:
       - "7000:7000"
     restart: unless-stopped
