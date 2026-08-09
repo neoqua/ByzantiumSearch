@@ -225,6 +225,7 @@ git commit -m "feat: search engine config, schema field and task column"
 import pytest
 import httpx
 from app.search import search_urls
+from app.source_type import UGC_QUERY_MARKERS
 
 
 @pytest.mark.asyncio
@@ -232,7 +233,7 @@ async def test_openserp_request_shape(httpx_mock):
     captured = {}
 
     def respond(request):
-        captured["params"] = dict(request.url.params)
+        captured.setdefault("params", dict(request.url.params))
         return httpx.Response(200, json={
             "results": [
                 {"url": "https://blog.ru/post1", "title": "Отзыв", "rank": 1, "domain": "blog.ru"},
@@ -270,8 +271,9 @@ async def test_openserp_paginates(httpx_mock):
 
     httpx_mock.add_callback(respond)
     results = await search_urls("Obj", [], engine="openserp")
-    assert len(calls) == 2
-    assert calls == ["0", "30"]
+    n_queries = 1 + len(UGC_QUERY_MARKERS)  # object name + one query per UGC marker
+    assert len(calls) == 2 * n_queries
+    assert calls == ["0", "30"] * n_queries
     assert len(results) == 4
 
 
@@ -461,7 +463,7 @@ class _Resp:
 
 calls = []
 
-def fake_get(self, url, params=None):
+async def fake_get(self, url, params=None):
     calls.append((url, dict(params)))
     if "localhost:7000" in url:
         return _Resp({"results": [
@@ -486,10 +488,10 @@ print("SEARCH_ENGINE_DISPATCH: PASS")
 
 page_calls = []
 
-def fake_get_page(self, url, params=None):
+async def fake_get_page(self, url, params=None):
     page_calls.append(dict(params))
-    start = params.get("start", "0")
-    if start == "0":
+    start = params.get("start", 0)
+    if start == 0:
         return _Resp({"results": [{"url": f"https://x/{i}", "title": "t"} for i in range(3)],
                       "pagination": {"has_more": True, "next_start": 30}})
     return _Resp({"results": [{"url": f"https://y/{i}", "title": "t"} for i in range(3)],
@@ -498,7 +500,7 @@ def fake_get_page(self, url, params=None):
 httpx.AsyncClient.get = fake_get_page
 try:
     r3 = asyncio.run(search_urls("Объект", [], engine="openserp"))
-    assert len(page_calls) == 2, page_calls
+    assert len(page_calls) == 10, page_calls
     assert r3[0]["url"].startswith("https://x/"), r3
 finally:
     httpx.AsyncClient.get = orig
