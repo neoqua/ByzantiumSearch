@@ -1,6 +1,7 @@
 import pytest
 import httpx
 from app.search import search_urls
+from app.source_type import UGC_QUERY_MARKERS
 
 
 @pytest.mark.asyncio
@@ -8,7 +9,7 @@ async def test_openserp_request_shape(httpx_mock):
     captured = {}
 
     def respond(request):
-        captured["params"] = dict(request.url.params)
+        captured.setdefault("params", dict(request.url.params))
         return httpx.Response(200, json={
             "results": [
                 {"url": "https://blog.ru/post1", "title": "Отзыв", "rank": 1, "domain": "blog.ru"},
@@ -46,8 +47,9 @@ async def test_openserp_paginates(httpx_mock):
 
     httpx_mock.add_callback(respond)
     results = await search_urls("Obj", [], engine="openserp")
-    assert len(calls) == 2
-    assert calls == ["0", "30"]
+    n_queries = 1 + len(UGC_QUERY_MARKERS)  # object name + one query per UGC marker
+    assert len(calls) == 2 * n_queries
+    assert calls == ["0", "30"] * n_queries
     assert len(results) == 4
 
 
