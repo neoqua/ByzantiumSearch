@@ -110,7 +110,20 @@ ReportData (after `results`):
     search_engine = Column(String, nullable=False, default="searxng")
 ```
 
-- [ ] **Step 5: Add migration** — `app/database.py`:
+- [ ] **Step 5: Add migration (shared column helper)** — `app/database.py`:
+
+Keep migrations DRY: extract a generic guarded-ALTER helper and delegate both columns to it. Add the shared helper:
+
+```python
+def _ensure_column(sync_conn, table, column, ddl):
+    from sqlalchemy import inspect
+    insp = inspect(sync_conn)
+    if table not in insp.get_table_names():
+        return
+    cols = {c["name"] for c in insp.get_columns(table)}
+    if column not in cols:
+        sync_conn.execute(text(ddl))
+```
 
 In `init_db`, after the `_ensure_results_source_type` line:
 
@@ -118,17 +131,20 @@ In `init_db`, after the `_ensure_results_source_type` line:
         await conn.run_sync(_ensure_tasks_search_engine)
 ```
 
-Add below `_ensure_results_source_type`:
+Refactor `_ensure_results_source_type` into a delegate (preserve the existing DDL string):
+
+```python
+def _ensure_results_source_type(sync_conn):
+    _ensure_column(sync_conn, "results", "source_type",
+                   "ALTER TABLE results ADD COLUMN source_type VARCHAR(20)")
+```
+
+Add `_ensure_tasks_search_engine` as a delegate:
 
 ```python
 def _ensure_tasks_search_engine(sync_conn):
-    from sqlalchemy import inspect
-    insp = inspect(sync_conn)
-    if "tasks" not in insp.get_table_names():
-        return
-    cols = {c["name"] for c in insp.get_columns("tasks")}
-    if "search_engine" not in cols:
-        sync_conn.execute(text("ALTER TABLE tasks ADD COLUMN search_engine VARCHAR(10) DEFAULT 'searxng'"))
+    _ensure_column(sync_conn, "tasks", "search_engine",
+                   "ALTER TABLE tasks ADD COLUMN search_engine VARCHAR(10) DEFAULT 'searxng'")
 ```
 
 - [ ] **Step 6: Verify migration with throwaway script** — create `C:\Temp\opencode\manual_test_migration.py`:
