@@ -17,6 +17,7 @@ class SearchRequest(BaseModel):
     annual_visitors: Optional[int] = None
     manual_urls: Optional[str] = None
     llm_settings: Optional[LLMSettings] = None
+    search_engine: Literal["searxng", "openserp"] = "searxng"
 
 
 class TaskStatus(BaseModel):
@@ -53,3 +54,4 @@ class ReportData(BaseModel):
     percentage_of_visitors: Optional[float]
     results: List[AnalysisResult]
     status: str = "completed"
+    search_engine: str = "searxng"

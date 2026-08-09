@@ -16,6 +16,7 @@ async def init_db():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
         await conn.run_sync(_ensure_results_source_type)
+        await conn.run_sync(_ensure_tasks_search_engine)
 
 
 def _ensure_results_source_type(sync_conn):
@@ -26,3 +27,13 @@ def _ensure_results_source_type(sync_conn):
     cols = {c["name"] for c in insp.get_columns("results")}
     if "source_type" not in cols:
         sync_conn.execute(text("ALTER TABLE results ADD COLUMN source_type VARCHAR(20)"))
+
+
+def _ensure_tasks_search_engine(sync_conn):
+    from sqlalchemy import inspect
+    insp = inspect(sync_conn)
+    if "tasks" not in insp.get_table_names():
+        return
+    cols = {c["name"] for c in insp.get_columns("tasks")}
+    if "search_engine" not in cols:
+        sync_conn.execute(text("ALTER TABLE tasks ADD COLUMN search_engine VARCHAR(10) DEFAULT 'searxng'"))

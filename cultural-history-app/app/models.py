@@ -20,6 +20,7 @@ class Task(Base):
     keywords = Column(String, nullable=False)
     annual_visitors = Column(Integer, nullable=True)
     manual_urls = Column(Text, nullable=True)
+    search_engine = Column(String, nullable=False, default="searxng")
     status = Column(String, default="pending")
     created_at = Column(DateTime, default=datetime.utcnow)
     completed_at = Column(DateTime, nullable=True)
