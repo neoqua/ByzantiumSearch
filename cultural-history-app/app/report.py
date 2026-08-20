@@ -1,3 +1,5 @@
+import csv
+import io
 from typing import Optional
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -50,3 +52,27 @@ async def build_report(task_id: str, session: AsyncSession) -> Optional[ReportDa
         status=task.status,
         search_engine=task.search_engine,
     )
+
+
+def report_to_csv(report: ReportData) -> str:
+    buf = io.StringIO()
+    writer = csv.writer(buf, delimiter=";", lineterminator="\r\n")
+    writer.writerow([
+        "№", "URL", "Заголовок", "Источник", "Ключевые слова",
+        "Дата", "Геопривязка", "Релевантность", "Упоминает объект",
+    ])
+    for i, r in enumerate(report.results, 1):
+        date_val = r.publication_date or r.date_mentioned or ""
+        mentions_val = "да" if r.mentions_object else "нет"
+        writer.writerow([
+            i,
+            r.url,
+            r.title or "",
+            r.source_type or "",
+            r.keyword_found or "",
+            date_val,
+            r.author_location or "",
+            r.relevance_score,
+            mentions_val,
+        ])
+    return "\ufeff" + buf.getvalue()
