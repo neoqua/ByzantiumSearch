@@ -36,7 +36,7 @@ def _split_urls(urls_raw: Optional[str]):
 
 
 def _cache_keywords(keywords):
-    return ",".join(keywords)
+    return ",".join(keywords) + "#kwv2"
 
 
 async def _mark_task_failed(task_id: str):
