@@ -4,6 +4,7 @@ from typing import Optional
 import aiohttp
 from bs4 import BeautifulSoup
 from app.llm import analyze_text_with_retry
+from app.keyword_match import match_keywords
 from app.schemas import LLMSettings
 
 logger = logging.getLogger(__name__)
@@ -69,4 +70,7 @@ async def fetch_and_analyze(
     llm_result["url"] = url
     llm_result["title"] = title
     llm_result["raw_text_hash"] = h
+    matched = match_keywords(text, keywords)
+    llm_result["has_keyword"] = bool(matched)
+    llm_result["keyword_found"] = ", ".join(matched) if matched else None
     return llm_result
