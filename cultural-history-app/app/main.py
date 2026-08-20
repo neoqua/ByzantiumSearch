@@ -5,7 +5,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, Request, Depends, BackgroundTasks
-from fastapi.responses import HTMLResponse, StreamingResponse, JSONResponse
+from fastapi.responses import HTMLResponse, StreamingResponse, JSONResponse, Response
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -14,7 +14,7 @@ from app.database import get_db, init_db
 from app.models import Task
 from app.schemas import SearchRequest, LLMSettings
 from app.analyzer import run_analysis, get_progress, _progress_store
-from app.report import build_report
+from app.report import build_report, report_to_csv
 from app.llm_providers import get_provider
 
 logging.basicConfig(level=logging.INFO)
@@ -144,6 +144,19 @@ async def results_page(request: Request, task_id: str, db: AsyncSession = Depend
     if report is None:
         return templates.TemplateResponse(request, "results.html", {"report": None, "error": "Task not found"})
     return templates.TemplateResponse(request, "results.html", {"report": report, "error": None})
+
+
+@app.get("/results/{task_id}/csv")
+async def download_csv(task_id: str, db: AsyncSession = Depends(get_db)):
+    report = await build_report(task_id, db)
+    if report is None:
+        return JSONResponse({"error": "not found"}, status_code=404)
+    csv_bytes = report_to_csv(report).encode("utf-8")
+    return Response(
+        csv_bytes,
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="report_{task_id}.csv"'},
+    )
 
 
 if __name__ == "__main__":
