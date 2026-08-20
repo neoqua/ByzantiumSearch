@@ -101,6 +101,12 @@ from app.llm_providers import get_provider
 from app import llm
 
 
+def test_build_prompt_excludes_keyword_fields():
+    prompt = _build_prompt("Monastery", ["Byzantium"], "Title", "Text")
+    assert "has_keyword" not in prompt
+    assert "keyword_found" not in prompt
+
+
 def test_analyze_text_accepts_llm_settings():
     async def run():
         provider = get_provider(LLMSettings(provider="local"))

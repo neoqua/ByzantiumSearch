@@ -12,17 +12,15 @@ def _build_prompt(object_name: str, keywords: list[str], title: str, text: str) 
     keywords_str = ", ".join(keywords)
     return (
         f'Analyze the text below. Determine if "{object_name}" is mentioned, '
-        f'if any of these keywords appear: [{keywords_str}], and extract dates and author location.\n\n'
+        f'and extract dates and author location.\n\n'
         f"Object: {object_name}\n"
-        f"Keywords: {keywords_str}\n\n"
+        f"Keywords (for relevance context only): {keywords_str}\n\n"
         f"Title: {title}\n\n"
         f"Text: {text[:3000]}\n\n"
         "Respond in JSON format only:\n"
         '{\n'
         '  "mentions_object": true/false,\n'
         '  "object_name": "name from text or null",\n'
-        '  "has_keyword": true/false,\n'
-        '  "keyword_found": "which keyword was found or null",\n'
         '  "date_mentioned": "DD.MM.YYYY from text or null",\n'
         '  "publication_date": "DD.MM.YYYY or null",\n'
         '  "author_location": "city, country, region or null",\n'
