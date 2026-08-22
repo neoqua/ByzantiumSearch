@@ -31,7 +31,7 @@ services:
       - LM_STUDIO_BASE_URL=http://host.docker.internal:1234
       - LM_STUDIO_MODEL=meta-llama-3.1-8b-instruct
       - OPENSERP_BASE_URL=http://openserp:7000
-      - SEARCH_MAX_PAGES=4
+      - SEARCH_MAX_PAGES=20
       - OPENSERP_RESULTS_LIMIT=50
       - DATABASE_URL=sqlite+aiosqlite:///./data/app.db
     volumes:
