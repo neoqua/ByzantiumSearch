@@ -70,7 +70,7 @@ async def fetch_and_analyze(
     llm_result["url"] = url
     llm_result["title"] = title
     llm_result["raw_text_hash"] = h
-    matched = match_keywords(text, keywords)
-    llm_result["has_keyword"] = bool(matched)
-    llm_result["keyword_found"] = ", ".join(matched) if matched else None
+    matched_kw, matched_forms = match_keywords(text, keywords)
+    llm_result["has_keyword"] = bool(matched_kw)
+    llm_result["keyword_found"] = ", ".join(matched_forms) if matched_forms else None
     return llm_result
