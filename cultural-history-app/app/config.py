@@ -33,7 +33,7 @@ class Settings:
         default_factory=lambda: os.getenv("OPENSERP_MODE", "balanced")
     )
     search_max_pages: int = field(
-        default_factory=lambda: int(os.getenv("SEARCH_MAX_PAGES", "20"))
+        default_factory=lambda: int(os.getenv("SEARCH_MAX_PAGES", "6"))
     )
     openserp_results_limit: int = field(
         default_factory=lambda: int(os.getenv("OPENSERP_RESULTS_LIMIT", "30"))
