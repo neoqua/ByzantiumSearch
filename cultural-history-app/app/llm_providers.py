@@ -72,17 +72,20 @@ class YandexCloudProvider(LLMProvider):
         self.version = version
 
     async def complete(self, prompt: str) -> str:
+        model_id = f"gpt://{self.folder_id}/{self.model}"
         payload = {
-            "modelUri": f"gpt://{self.folder_id}/{self.model}/{self.version}",
-            "completionOptions": {"temperature": 0.1, "maxTokens": 256},
-            "messages": [{"role": "user", "text": prompt}],
+            "model": model_id,
+            "messages": [{"role": "user", "content": prompt}],
+            "temperature": 0.1,
+            "max_tokens": 256,
         }
         headers = {"Authorization": f"Api-Key {self.api_key}"}
         async with httpx.AsyncClient(timeout=60.0) as client:
-            resp = await client.post(self.endpoint, json=payload, headers=headers)
+            url = _chat_completions_url(self.endpoint)
+            resp = await client.post(url, json=payload, headers=headers)
             resp.raise_for_status()
             data = resp.json()
-            return data["result"]["alternatives"][0]["message"]["text"]
+            return data["choices"][0]["message"]["content"]
 
 
 def get_provider(llm_settings: LLMSettings) -> LLMProvider:
@@ -111,7 +114,7 @@ def get_provider(llm_settings: LLMSettings) -> LLMProvider:
             raise ValueError("Folder ID обязателен для Yandex Cloud")
         return YandexCloudProvider(
             endpoint=llm_settings.endpoint
-            or "https://llm.api.cloud.yandex.net/foundationModels/v1/completion",
+            or "https://ai.api.cloud.yandex.net/v1",
             model=llm_settings.model or "yandexgpt-lite",
             api_key=llm_settings.api_key,
             folder_id=llm_settings.folder_id,
