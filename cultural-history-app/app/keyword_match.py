@@ -18,6 +18,10 @@ def _stem(token: str) -> str:
     return lower
 
 
+def _stem_matches(page_stem: str, kw_stem: str) -> bool:
+    return page_stem.startswith(kw_stem) or kw_stem.startswith(page_stem)
+
+
 def match_keywords(text: str, keywords: list[str]) -> list[str]:
     page_stems = [_stem(t) for t in tokenize(text)]
     matched = []
@@ -28,7 +32,7 @@ def match_keywords(text: str, keywords: list[str]) -> list[str]:
         kw_stems = [_stem(t) for t in kw_tokens]
         kw_len = len(kw_stems)
         for i in range(len(page_stems) - kw_len + 1):
-            if page_stems[i : i + kw_len] == kw_stems:
+            if all(_stem_matches(page_stems[i + j], kw_stems[j]) for j in range(kw_len)):
                 matched.append(kw)
                 break
     return matched
