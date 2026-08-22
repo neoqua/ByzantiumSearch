@@ -42,9 +42,9 @@
             <input type="text" id="llm-yandex-folder-id">
             <label>Модель</label>
             <select id="llm-yandex-model">
+                <option value="aliceai-llm-flash" selected>Alice AI LLM Flash (64k)</option>
                 <option value="yandexgpt-5-lite">YandexGPT Lite 5 (32k)</option>
                 <option value="aliceai-llm">Alice AI LLM (128k)</option>
-                <option value="aliceai-llm-flash">Alice AI LLM Flash (64k)</option>
                 <option value="yandexgpt-5.1">YandexGPT Pro 5.1 (32k)</option>
                 <option value="yandexgpt-5-pro">YandexGPT Pro 5 (32k)</option>
                 <option value="deepseek-v4-flash">DeepSeek V4 Flash (1M)</option>
@@ -123,7 +123,7 @@ function llmLoadSettings() {
         document.getElementById('llm-yandex-api-key').value = saved.yandex.api_key || '';
         document.getElementById('llm-yandex-endpoint').value = saved.yandex.endpoint || 'https://ai.api.cloud.yandex.net/v1';
         document.getElementById('llm-yandex-folder-id').value = saved.yandex.folder_id || '';
-        document.getElementById('llm-yandex-model').value = saved.yandex.model || 'yandexgpt-5-lite';
+        document.getElementById('llm-yandex-model').value = saved.yandex.model || 'aliceai-llm-flash';
     }
     if (saved.openai) {
         document.getElementById('llm-openai-api-key').value = saved.openai.api_key || '';
