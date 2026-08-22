@@ -42,10 +42,14 @@
             <input type="text" id="llm-yandex-folder-id">
             <label>Модель</label>
             <select id="llm-yandex-model">
-                <option value="yandexgpt-lite">yandexgpt-lite</option>
-                <option value="yandexgpt">yandexgpt</option>
-                <option value="aliceai-llm">aliceai-llm</option>
-                <option value="fmslrvht2r0gn8f81hgc">fmslrvht2r0gn8f81hgc (классификация)</option>
+                <option value="yandexgpt-5-lite">YandexGPT Lite 5 (32k)</option>
+                <option value="aliceai-llm">Alice AI LLM (128k)</option>
+                <option value="aliceai-llm-flash">Alice AI LLM Flash (64k)</option>
+                <option value="yandexgpt-5.1">YandexGPT Pro 5.1 (32k)</option>
+                <option value="yandexgpt-5-pro">YandexGPT Pro 5 (32k)</option>
+                <option value="deepseek-v4-flash">DeepSeek V4 Flash (1M)</option>
+                <option value="qwen3-235b-a22b-fp8">Qwen3 235B (256k)</option>
+                <option value="qwen3.6-35b-a3b">Qwen3.6 35B (256k, vision)</option>
             </select>
         </div>
 
@@ -119,7 +123,7 @@ function llmLoadSettings() {
         document.getElementById('llm-yandex-api-key').value = saved.yandex.api_key || '';
         document.getElementById('llm-yandex-endpoint').value = saved.yandex.endpoint || '';
         document.getElementById('llm-yandex-folder-id').value = saved.yandex.folder_id || '';
-        document.getElementById('llm-yandex-model').value = saved.yandex.model || 'yandexgpt-lite';
+        document.getElementById('llm-yandex-model').value = saved.yandex.model || 'yandexgpt-5-lite';
     }
     if (saved.openai) {
         document.getElementById('llm-openai-api-key').value = saved.openai.api_key || '';

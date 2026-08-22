@@ -115,7 +115,7 @@ def get_provider(llm_settings: LLMSettings) -> LLMProvider:
         return YandexCloudProvider(
             endpoint=llm_settings.endpoint
             or "https://ai.api.cloud.yandex.net/v1",
-            model=llm_settings.model or "yandexgpt-lite",
+            model=llm_settings.model or "yandexgpt-5-lite",
             api_key=llm_settings.api_key,
             folder_id=llm_settings.folder_id,
             version=llm_settings.version or "latest",
