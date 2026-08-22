@@ -121,7 +121,7 @@ function llmLoadSettings() {
     }
     if (saved.yandex) {
         document.getElementById('llm-yandex-api-key').value = saved.yandex.api_key || '';
-        document.getElementById('llm-yandex-endpoint').value = saved.yandex.endpoint || '';
+        document.getElementById('llm-yandex-endpoint').value = saved.yandex.endpoint || 'https://ai.api.cloud.yandex.net/v1';
         document.getElementById('llm-yandex-folder-id').value = saved.yandex.folder_id || '';
         document.getElementById('llm-yandex-model').value = saved.yandex.model || 'yandexgpt-5-lite';
     }
