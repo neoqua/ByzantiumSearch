@@ -11,19 +11,19 @@ logger = logging.getLogger(__name__)
 def _build_prompt(object_name: str, keywords: list[str], title: str, text: str) -> str:
     keywords_str = ", ".join(keywords)
     return (
-        f'Analyze the text below. Determine if "{object_name}" is mentioned, '
-        f'and extract dates and author location.\n\n'
-        f"Object: {object_name}\n"
-        f"Keywords (for relevance context only): {keywords_str}\n\n"
-        f"Title: {title}\n\n"
-        f"Text: {text[:3000]}\n\n"
-        "Respond in JSON format only:\n"
-        '{\n'
+        f'Проанализируй текст ниже. Определи, упоминается ли "{object_name}", '
+        f"извлеки даты и местоположение автора.\n\n"
+        f"Объект: {object_name}\n"
+        f"Ключевые слова (для контекста релевантности): {keywords_str}\n\n"
+        f"Заголовок: {title}\n\n"
+        f"Текст: {text[:3000]}\n\n"
+        "Ответ ТОЛЬКО в формате JSON:\n"
+        "{\n"
         '  "mentions_object": true/false,\n'
-        '  "object_name": "name from text or null",\n'
-        '  "date_mentioned": "DD.MM.YYYY from text or null",\n'
-        '  "publication_date": "DD.MM.YYYY or null",\n'
-        '  "author_location": "city, country, region or null",\n'
+        '  "object_name": "название из текста или null",\n'
+        '  "date_mentioned": "ДД.ММ.ГГГГ из текста или null",\n'
+        '  "publication_date": "ДД.ММ.ГГГГ или null",\n'
+        '  "author_location": "город, страна, регион или null",\n'
         '  "relevance_score": 0.0-1.0,\n'
         '  "source_type": "blog/forum/social/official/agency/other"\n'
         "}"

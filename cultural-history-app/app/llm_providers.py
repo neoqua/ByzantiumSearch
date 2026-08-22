@@ -31,7 +31,7 @@ class LocalOpenAIProvider(LLMProvider):
             "model": self.model,
             "messages": [{"role": "user", "content": prompt}],
             "temperature": 0.1,
-            "max_tokens": 256,
+            "max_tokens": 512,
         }
         async with httpx.AsyncClient(timeout=60.0) as client:
             url = _chat_completions_url(self.endpoint)
@@ -52,7 +52,7 @@ class GenericOpenAIProvider(LLMProvider):
             "model": self.model,
             "messages": [{"role": "user", "content": prompt}],
             "temperature": 0.1,
-            "max_tokens": 256,
+            "max_tokens": 512,
         }
         headers = {"Authorization": f"Bearer {self.api_key}"}
         async with httpx.AsyncClient(timeout=60.0) as client:
@@ -77,7 +77,7 @@ class YandexCloudProvider(LLMProvider):
             "model": model_id,
             "messages": [{"role": "user", "content": prompt}],
             "temperature": 0.1,
-            "max_tokens": 256,
+            "max_tokens": 512,
         }
         headers = {"Authorization": f"Api-Key {self.api_key}"}
         async with httpx.AsyncClient(timeout=60.0) as client:
