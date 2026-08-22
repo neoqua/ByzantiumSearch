@@ -15,6 +15,17 @@ def _chat_completions_url(endpoint: str) -> str:
     return f"{base}/v1/chat/completions"
 
 
+def _extract_content(data: dict) -> str:
+    msg = data["choices"][0]["message"]
+    content = msg.get("content")
+    if content:
+        return content
+    reasoning = msg.get("reasoning_content")
+    if reasoning:
+        return reasoning
+    raise ValueError(f"Empty response from LLM: {data}")
+
+
 class LLMProvider(ABC):
     @abstractmethod
     async def complete(self, prompt: str) -> str:
@@ -38,7 +49,7 @@ class LocalOpenAIProvider(LLMProvider):
             resp = await client.post(url, json=payload)
             resp.raise_for_status()
             data = resp.json()
-            return data["choices"][0]["message"]["content"]
+            return _extract_content(data)
 
 
 class GenericOpenAIProvider(LLMProvider):
@@ -60,7 +71,7 @@ class GenericOpenAIProvider(LLMProvider):
             resp = await client.post(url, json=payload, headers=headers)
             resp.raise_for_status()
             data = resp.json()
-            return data["choices"][0]["message"]["content"]
+            return _extract_content(data)
 
 
 class YandexCloudProvider(LLMProvider):
@@ -73,11 +84,13 @@ class YandexCloudProvider(LLMProvider):
 
     async def complete(self, prompt: str) -> str:
         model_id = f"gpt://{self.folder_id}/{self.model}"
+        if self.version and "/latest" not in self.model:
+            model_id = f"{model_id}/{self.version}"
         payload = {
             "model": model_id,
             "messages": [{"role": "user", "content": prompt}],
             "temperature": 0.1,
-            "max_tokens": 512,
+            "max_tokens": 1024,
         }
         headers = {"Authorization": f"Api-Key {self.api_key}"}
         async with httpx.AsyncClient(timeout=60.0) as client:
@@ -85,7 +98,7 @@ class YandexCloudProvider(LLMProvider):
             resp = await client.post(url, json=payload, headers=headers)
             resp.raise_for_status()
             data = resp.json()
-            return data["choices"][0]["message"]["content"]
+            return _extract_content(data)
 
 
 def get_provider(llm_settings: LLMSettings) -> LLMProvider:
@@ -115,7 +128,7 @@ def get_provider(llm_settings: LLMSettings) -> LLMProvider:
         return YandexCloudProvider(
             endpoint=llm_settings.endpoint
             or "https://ai.api.cloud.yandex.net/v1",
-            model=llm_settings.model or "aliceai-llm-flash",
+            model=llm_settings.model or "qwen3-235b-a22b-fp8",
             api_key=llm_settings.api_key,
             folder_id=llm_settings.folder_id,
             version=llm_settings.version or "latest",
