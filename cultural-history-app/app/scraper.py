@@ -11,6 +11,8 @@ logger = logging.getLogger(__name__)
 
 
 def extract_text(html: str) -> str:
+    if not html or not html.strip():
+        return ""
     soup = BeautifulSoup(html, "lxml")
     for tag in soup(["script", "style", "nav", "footer", "header"]):
         tag.decompose()
