@@ -58,5 +58,12 @@ Open `http://localhost:8000`.
 
 ## Tests
 
-Test logic is verified manually via `python -c` scripts — `pytest` hangs on
-Windows/Python 3.13 (see AGENTS.md Known issues).
+From `cultural-history-app/` with the venv active (Linux/Mac):
+
+```
+python -m pytest -q
+```
+
+All tests are offline (HTTP is mocked with `pytest-httpx`). On the Windows dev
+machine `pytest` was observed to hang at collection — see AGENTS.md Known
+issues for the `python -c` fallback.

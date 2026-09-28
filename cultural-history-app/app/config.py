@@ -41,6 +41,19 @@ class Settings:
     openserp_results_limit: int = field(
         default_factory=lambda: int(os.getenv("OPENSERP_RESULTS_LIMIT", "30"))
     )
+    default_search_engine: str = field(
+        default_factory=lambda: _read_search_engine(
+            os.getenv("DEFAULT_SEARCH_ENGINE", "openserp")
+        )
+    )
+
+
+SEARCH_ENGINES = ("searxng", "openserp")
+
+
+def _read_search_engine(value):
+    value = (value or "").strip().lower()
+    return value if value in SEARCH_ENGINES else "openserp"
 
 
 settings = Settings()

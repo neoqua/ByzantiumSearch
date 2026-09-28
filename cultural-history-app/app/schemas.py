@@ -1,5 +1,7 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Optional, List, Literal
+
+from app.config import settings
 
 
 class LLMSettings(BaseModel):
@@ -17,7 +19,9 @@ class SearchRequest(BaseModel):
     annual_visitors: Optional[int] = None
     manual_urls: Optional[str] = None
     llm_settings: Optional[LLMSettings] = None
-    search_engine: Literal["searxng", "openserp"] = "openserp"
+    search_engine: Literal["searxng", "openserp"] = Field(
+        default_factory=lambda: settings.default_search_engine
+    )
 
 
 class TaskStatus(BaseModel):

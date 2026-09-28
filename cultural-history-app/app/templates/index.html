@@ -70,8 +70,8 @@
 
     <label>Поисковый движок
         <select id="search-engine">
-            <option value="openserp">OpenSERP</option>
-            <option value="searxng">SearXNG</option>
+            <option value="openserp" {% if default_search_engine == 'openserp' %}selected{% endif %}>OpenSERP</option>
+            <option value="searxng" {% if default_search_engine == 'searxng' %}selected{% endif %}>SearXNG</option>
         </select>
     </label>
 

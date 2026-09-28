@@ -10,6 +10,7 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import settings
 from app.database import get_db, init_db
 from app.models import Task
 from app.schemas import SearchRequest, LLMSettings
@@ -35,7 +36,9 @@ app = FastAPI(title="Cultural History Analyzer", lifespan=lifespan)
 
 @app.get("/", response_class=HTMLResponse)
 async def index(request: Request):
-    return templates.TemplateResponse(request, "index.html", {})
+    return templates.TemplateResponse(
+        request, "index.html", {"default_search_engine": settings.default_search_engine}
+    )
 
 
 @app.post("/api/search")

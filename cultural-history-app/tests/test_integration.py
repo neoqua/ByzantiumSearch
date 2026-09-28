@@ -38,9 +38,18 @@ async def test_full_api_flow(setup_db):
         assert resp.status_code == 200
         task_id = resp.json()["task_id"]
 
-        # Check progress endpoint exists
+        # Progress endpoint is an SSE stream that only ends once the task is
+        # final; run_analysis is a no-op here, so mark it completed first.
+        from app.analyzer import _progress_store
+        _progress_store[task_id]["status"] = "completed"
         resp = await client.get(f"/api/tasks/{task_id}/progress")
         assert resp.status_code == 200
+        assert "event: done" in resp.text
+        assert f"/results/{task_id}" in resp.text
+
+        # Unknown task -> 404, not a hanging stream
+        resp = await client.get("/api/tasks/does-not-exist/progress")
+        assert resp.status_code == 404
 
         # Check results page renders (task may still be processing)
         resp = await client.get(f"/results/{task_id}")

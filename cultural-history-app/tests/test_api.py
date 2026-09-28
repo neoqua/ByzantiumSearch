@@ -7,6 +7,7 @@ _test_db_path = os.path.join(tempfile.gettempdir(), f"task6_test_api_{uuid.uuid4
 os.environ["DATABASE_URL"] = f"sqlite+aiosqlite:///{_test_db_path}"
 
 import pytest
+import pytest_asyncio
 from httpx import AsyncClient, ASGITransport
 
 from app.main import app
@@ -19,7 +20,7 @@ async def _noop_run_analysis(*args, **kwargs):
     pass
 
 
-@pytest.fixture
+@pytest_asyncio.fixture
 async def api_client(monkeypatch):
     await init_db()
     monkeypatch.setattr(main_module, "run_analysis", _noop_run_analysis)

@@ -8,29 +8,32 @@ Cultural History Analysis App — a FastAPI web service that searches travel blo
 
 - `cultural-history-app/` — Python project (FastAPI + SQLAlchemy async + aiosqlite)
   - `app/` — package: `config.py`, `database.py`, `models.py`, `schemas.py`, `llm.py`, `llm_providers.py`, `search.py`, `source_type.py`, `scraper.py`, `analyzer.py`, `report.py`, `main.py`, `templates/`
-  - `tests/` — pytest files: `test_llm.py`, `test_llm_providers.py`, `test_search.py`, `test_search_engine.py`, `test_search_openserp.py`, `test_source_type.py`, `test_scraper.py`, `test_api.py`, `test_integration.py`
-  - `venv/` — Python 3.13 virtual env (recreated 2026-08-11 on Python 3.13.15)
+  - `tests/` — pytest files: `test_llm.py`, `test_llm_providers.py`, `test_search.py`, `test_search_engine.py`, `test_search_openserp.py`, `test_source_type.py`, `test_scraper.py`, `test_keyword_match.py`, `test_api.py`, `test_integration.py`; `conftest.py` zeroes the inter-query search delay and snapshots `search_max_pages` for every test
+  - `pytest.ini` — `asyncio_mode = strict`, function-scoped fixture loops
+  - `venv/` — gitignored; the checked-out one is a Windows venv (`venv/Scripts/`), useless on Linux — create a fresh one (`python3 -m venv venv && venv/bin/pip install -r requirements.txt`)
   - `requirements.txt` — pinned deps; `Dockerfile`, `docker-compose.yml` (3 services); `DEPLOYMENT.md` (target-machine checklist, Russian)
   - `.env` — local dev config (gitignored); `.env.example` documents overrides
   - `data/` — gitignored, SQLite DB created at runtime
-- `Тревел блоги.docx` — travel blogs source data (Russian)
+- `Тревел блоги.docx` — travel blogs source data (Russian); not yet used by code
 - `docs/superpowers/` — specs and plans (spec-driven development artifacts)
 - `.superpowers/` — SDD progress ledger per feature wave (self-ignored via its own `.gitignore` with `*`)
+- Root `.gitignore` excludes `*.ipynb` / `.ipynb_checkpoints/` — `remotemodeltest.ipynb` contains a live Yandex Cloud API key and must never be committed. `.gitattributes` forces LF line endings.
 
 ## Current state
 
-HEAD: `afd4af7`. Original plan tasks 1–10 are complete; later feature waves landed on top (see `git log` and `.superpowers/sdd/` for detail). An unimplemented design spec for keyword matching + CSV export exists at `docs/superpowers/specs/2026-08-12-keyword-matching-csv-export-design.md`:
-- Selectable search backend: SearXNG or OpenSERP (`search_engine`), deployed via compose
-- UGC-priority search: query expansion + heuristic source-type sorting + `POST /api/tasks/{id}/stop`
-- Remote LLM providers: local (LM Studio) / openai (OpenAI-compatible) / yandex (Yandex Cloud), connection tested via `POST /api/llm/test`
+All planned feature waves have landed (see `git log` and `.superpowers/sdd/` for detail):
+- Selectable search backend: SearXNG or OpenSERP (`search_engine`), deployed via compose. Default is `openserp` (env `DEFAULT_SEARCH_ENGINE`, read in `config.py`, used as `SearchRequest` default and preselected in the UI). SearXNG returning 0 results falls back to OpenSERP
+- UGC-priority search: query expansion + heuristic source-type sorting + `POST /api/tasks/{id}/stop`; inter-query delay `SEARCH_DELAY` to avoid engine bans
+- Remote LLM providers: local (LM Studio) / openai (OpenAI-compatible) / yandex (Yandex Cloud, now via its OpenAI-compatible endpoint `https://ai.api.cloud.yandex.net/v1`), connection tested via `POST /api/llm/test`
+- Morphology-aware keyword matching (`app/keyword_match.py`) + CSV export (`GET /results/{id}/csv`)
+
+Improvement plan (report honesty, task lifecycle, throughput, search quality) is tracked in chat history; next step after the test baseline is fixing report metrics (`total_mentions` currently counts processed URLs, not actual mentions) and surfacing fetch/LLM failures instead of recording them as "not mentioned".
 
 ## How to work
 
 - `cd cultural-history-app`
-- **Do NOT run `python -m pytest`** — it hangs on this machine (see Known issues). The plan in `docs/superpowers/` says to run pytest; skip those steps. Verify with the venv python directly:
-  - Pure functions: `.\venv\Scripts\python.exe -c "from app.scraper import extract_text, text_hash; from app.source_type import classify_source; from app.search import build_queries; print('OK')"`
-  - Imports: `.\venv\Scripts\python.exe -c "from app.config import settings; from app.models import Task; from app.schemas import SearchRequest; print('OK')"`
-  - Async functions needing mocks (httpx/aiohttp): write a throwaway script that monkeypatches `httpx.AsyncClient` on the module under test and calls the async fn via `asyncio.run()`. E.g. for `app.search._search_searxng`, patch `httpx.AsyncClient.get` to return a canned JSON with a `results` list, then assert on the returned URLs.
+- **Tests run normally on Linux**: `venv/bin/python -m pytest -q` — 78 tests, ~1 s. The old "pytest hangs" note applies to the Windows dev machine only (see Known issues). Test modules set `DATABASE_URL` to a temp SQLite file before importing `app`
+- Search tests use `pytest-httpx` with `add_callback(..., is_reusable=True)` (required since pytest-httpx 0.32; `requirements.txt` pins `>=0.32`). SearXNG and OpenSERP are both on `localhost` in tests — distinguish them by port, not host
 - Run app: `uvicorn app.main:app --reload` (needs SearXNG on :8888, OpenSERP on :7000, LM Studio on :1234 per `.env`)
 - Docker is installed on the dev machine (29.6.2), so e2e verification can run locally: `docker compose up -d --build`, then browse `http://localhost:8000`
 
@@ -47,13 +50,13 @@ HEAD: `afd4af7`. Original plan tasks 1–10 are complete; later feature waves la
 
 - Async throughout: `httpx.AsyncClient` for LLM and search engines, `aiohttp` for page fetching
 - SQLAlchemy async with `aiosqlite` driver
-- LLM providers in `app/llm_providers.py`: `LLMProvider` ABC + `get_provider(LLMSettings)` factory. `local` hits `{endpoint}/v1/chat/completions` (OpenAI-compatible, default LM Studio), `openai` adds a Bearer key, `yandex` uses `gpt://{folder_id}/{model}/{version}` at `https://llm.api.cloud.yandex.net/foundationModels/v1/completion`. All: temperature=0.1, max_tokens=256. Default model `meta-llama-3.1-8b-instruct` (configurable)
+- LLM providers in `app/llm_providers.py`: `LLMProvider` ABC + `get_provider(LLMSettings)` factory. All three speak OpenAI `chat/completions` (`_chat_completions_url` appends `/v1/chat/completions` unless the endpoint already ends in `/v1`). `local` = LM Studio, no auth; `openai` adds `Bearer` key; `yandex` adds `Api-Key`, model id `gpt://{folder_id}/{model}/{version}`, default model `qwen3-235b-a22b-fp8`. temperature=0.1; max_tokens 512 (local/openai) / 1024 (yandex). `_extract_content` falls back to `reasoning_content` when `content` is empty. Default local model `meta-llama-3.1-8b-instruct` (configurable)
 - Connection settings for remote providers live in browser `localStorage` and are sent per-request as `LLMSettings`; `POST /api/llm/test` validates a connection
 - Prompt engineering (`app/llm.py`): strict JSON-only responses; `_parse_response()` extracts JSON (tolerates fenced blocks); `_coerce_result()` forces booleans/float, whitelists `source_type` to `blog/forum/social/official/agency/other`; `analyze_text_with_retry()` falls back to a zeroed result after retries
 - DB schema: `tasks`, `results`, `url_cache`; `tasks.search_engine` column exists with a migration guard in `database.py` (`_ensure_column` pattern — reuse it for any future column)
-- Search (`app/search.py`): `build_queries()` = `{object_name}`, `{object_name} {keyword}`, plus UGC markers (`отзывы, блог, форум, впечатления`); engine dispatch via `search_urls(object_name, keywords, engine=...)`. SearXNG paginates `SEARCH_MAX_PAGES` pages; OpenSERP hits `/mega/search` with `OPENSERP_RESULTS_LIMIT` and `has_more` pagination rounds. Results are deduped by URL and sorted by heuristic `source_type` (UGC first) from `app/source_type.py` `classify_source()`. LLM returns the authoritative `source_type`
-- Search backend is selectable per request via `SearchRequest.search_engine` (`"searxng" | "openserp"`), stored on the task, shown in the report header
-- Keyword matching is local and deterministic (`app/keyword_match.py`): `snowballstemmer` stems page + keyword tokens, matches by contiguous subsequence. Multi-keyword logic is OR (at least one match)
+- Search (`app/search.py`): `build_queries()` = `{object_name}`, `{object_name} {keyword}`, plus UGC markers (`отзывы, блог, форум, впечатления`); engine dispatch via `search_urls(object_name, keywords, engine=...)`. Both engines paginate up to `SEARCH_MAX_PAGES` (default 3) and sleep `SEARCH_DELAY` seconds between queries; OpenSERP hits `/mega/search` with `OPENSERP_RESULTS_LIMIT` and stops early when `pagination.has_more` is false. `engine="searxng"` falls back to OpenSERP when SearXNG yields nothing. Results are deduped by URL and sorted by heuristic `source_type` (UGC first) from `app/source_type.py` `classify_source()` — that heuristic scale (`ugc/unknown/official/agency`) is only for ordering; the report shows the LLM's `source_type` (`blog/forum/social/official/agency/other`)
+- Search backend is selectable per request via `SearchRequest.search_engine` (`"searxng" | "openserp"`), defaulting to `settings.default_search_engine`, stored on the task, shown in the report header
+- Keyword matching is local and deterministic (`app/keyword_match.py`): `snowballstemmer` stems page + keyword tokens, matches by contiguous subsequence. `match_keywords()` returns `(matched_keywords, matched_word_forms)`; the report shows the word forms found in the text. Stem comparison is prefix-based: keyword stem may be a prefix of the page stem (`визант` → `византийск`); the reverse only when the page stem is ≥4 chars (so `в`/`виз` never match `Византия`). Multi-keyword logic is OR (at least one match)
 - Stop endpoint `POST /api/tasks/{id}/stop` marks task `stopped`
 
 ## Version pinning
@@ -64,12 +67,14 @@ HEAD: `afd4af7`. Original plan tasks 1–10 are complete; later feature waves la
 
 ## Known issues
 
-- **pytest hangs on Windows/Python 3.13** — any `python -m pytest` invocation stalls at startup (during collection, with pytest-asyncio + pytest-httpx installed), even for pure-sync test files. Run test logic via `python -c` scripts or throwaway monkeypatch scripts instead.
-- **aiohttp import stall (intermittent)** — aiohttp 3.14.3 was observed to hang on import on Python 3.13 Windows, but imports fine on fresh runs (as of this writing). `tests/test_scraper.py` deliberately imports only the pure functions (`extract_text`, `text_hash`) to stay safe; the async functions (`fetch_page_text`, `fetch_and_analyze`) remain effectively untested.
-- `datetime.utcnow` deprecated in 3.12+ (plan-mandated, deferred; still used in `models.py` and `analyzer.py`)
+- **pytest hangs on Windows/Python 3.13 only** — on the Windows dev machine `python -m pytest` stalled during collection. On Linux (Python 3.12, verified 2026-09-28) the full suite runs in ~1 s. If working on Windows, fall back to `python -c` scripts / throwaway monkeypatch scripts.
+- **aiohttp import stall (intermittent, Windows)** — aiohttp 3.14.3 was observed to hang on import on Python 3.13 Windows. `tests/test_scraper.py` imports only the pure functions (`extract_text`, `text_hash`); the async functions (`fetch_page_text`, `fetch_and_analyze`) remain untested.
+- `scraper.fetch_page_text` forces `utf-8` decoding — cp1251 pages are garbled and silently fail keyword matching. Planned fix: pass bytes to BeautifulSoup and let it detect the charset.
+- `report.build_report` reports `total_mentions` = number of processed URLs, not URLs with `mentions_object=True`; LLM fallback after retries is stored as a normal "not mentioned" row. Both are the next planned fixes.
+- `datetime.utcnow` deprecated in 3.12+ (deferred; still used in `models.py` and `analyzer.py`)
 
 ## Conventions
 
-- Python 3.13, no type hints in `config.py` (uses dataclass `field` pattern), Pydantic v2 for schemas
+- Python 3.12+ (3.13 on the original Windows machine), no type hints in `config.py` (uses dataclass `field` pattern), Pydantic v2 for schemas
 - Tests avoid HTTP calls (unit-test only; mock httpx for integration)
 - CI/formatting/linting: none configured
