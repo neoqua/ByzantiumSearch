@@ -18,8 +18,20 @@ def _stem(token: str) -> str:
     return lower
 
 
+# Minimum length of a page-word stem allowed to match a *longer* keyword stem by
+# prefix. Without it, "в" or "виз" (from "виза") would match the keyword "Византия".
+_MIN_REVERSE_PREFIX_LEN = 4
+
+
 def _stem_matches(page_stem: str, kw_stem: str) -> bool:
-    return page_stem.startswith(kw_stem) or kw_stem.startswith(page_stem)
+    if page_stem == kw_stem:
+        return True
+    # Keyword stem is a prefix of the page word: "визант" -> "византийск".
+    if page_stem.startswith(kw_stem):
+        return True
+    # Page word is a shorter form of the keyword: keyword "византийский",
+    # page word "византия" ("визант"). Guard against tiny stems.
+    return len(page_stem) >= _MIN_REVERSE_PREFIX_LEN and kw_stem.startswith(page_stem)
 
 
 def match_keywords(text: str, keywords: list[str]) -> tuple[list[str], list[str]]:
