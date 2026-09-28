@@ -7,14 +7,21 @@ from pathlib import Path
 from fastapi import FastAPI, Request, Depends, BackgroundTasks
 from fastapi.responses import HTMLResponse, StreamingResponse, JSONResponse, Response
 from fastapi.templating import Jinja2Templates
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
-from app.database import get_db, init_db
+from app.database import get_db, init_db, async_session
 from app.models import Task
 from app.schemas import SearchRequest, LLMSettings
-from app.analyzer import run_analysis, get_progress, _progress_store
+from app.analyzer import (
+    run_analysis,
+    get_progress,
+    seed_progress,
+    public_progress,
+    progress_from_task,
+    request_stop,
+    fail_interrupted_tasks,
+)
 from app.report import build_report, report_to_csv
 from app.llm_providers import get_provider
 
@@ -28,6 +35,9 @@ templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await init_db()
+    n = await fail_interrupted_tasks()
+    if n:
+        logger.info("Marked %s interrupted task(s) as failed", n)
     yield
 
 
@@ -58,14 +68,7 @@ async def api_search(
     db.add(task)
     await db.commit()
 
-    _progress_store[task.id] = {
-        "status": "pending",
-        "processed": 0,
-        "total": 0,
-        "found_keyword": 0,
-        "current_url": None,
-        "current_title": None,
-    }
+    seed_progress(task.id)
 
     background_tasks.add_task(
         run_analysis,
@@ -95,11 +98,33 @@ async def test_llm_connection(body: LLMSettings):
 
 @app.post("/api/tasks/{task_id}/stop")
 async def stop_task(task_id: str):
-    progress = get_progress(task_id)
-    if progress is None:
+    ok = await request_stop(task_id)
+    if not ok:
         return JSONResponse({"error": "not found"}, status_code=404)
-    progress["stop_requested"] = True
     return {"status": "stopping"}
+
+
+_FINAL = frozenset({"completed", "stopped", "failed"})
+
+
+def _task_status_body(task_id: str, progress: dict, error_message=None) -> dict:
+    body = {
+        "task_id": task_id,
+        **public_progress(progress),
+        "error_message": error_message if error_message is not None else progress.get("error_message"),
+    }
+    if body["status"] in _FINAL:
+        body["redirect"] = f"/results/{task_id}"
+    return body
+
+
+@app.get("/api/tasks/{task_id}")
+async def task_status(task_id: str, db: AsyncSession = Depends(get_db)):
+    task = await db.get(Task, task_id)
+    if task is None:
+        return JSONResponse({"error": "not found"}, status_code=404)
+    progress = get_progress(task_id) or progress_from_task(task)
+    return _task_status_body(task_id, progress, task.error_message)
 
 
 @app.get("/api/tasks/{task_id}/progress")
@@ -113,14 +138,21 @@ async def task_progress(task_id: str, db: AsyncSession = Depends(get_db)):
         while True:
             progress = get_progress(task_id)
             if progress is None:
-                yield f"event: error\ndata: {json.dumps({'error': 'not found'})}\n\n"
-                break
+                async with async_session() as session:
+                    task = await session.get(Task, task_id)
+                if task is None:
+                    yield f"event: error\ndata: {json.dumps({'error': 'not found'})}\n\n"
+                    break
+                progress = progress_from_task(task)
             status = progress["status"]
-            if status in ("completed", "stopped", "failed"):
-                yield f"event: done\ndata: {json.dumps({'task_id': task_id, 'redirect': f'/results/{task_id}'})}\n\n"
+            if status in _FINAL:
+                yield (
+                    "event: done\n"
+                    f"data: {json.dumps({'task_id': task_id, 'redirect': f'/results/{task_id}'})}\n\n"
+                )
                 break
             if status in ("processing", "pending"):
-                yield f"event: progress\ndata: {json.dumps(progress)}\n\n"
+                yield f"event: progress\ndata: {json.dumps(public_progress(progress))}\n\n"
                 await asyncio.sleep(1)
                 continue
             yield f"event: error\ndata: {json.dumps({'task_id': task_id, 'status': status})}\n\n"

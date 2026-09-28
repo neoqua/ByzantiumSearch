@@ -32,6 +32,8 @@ class TaskStatus(BaseModel):
     found_keyword: int = 0
     current_url: Optional[str] = None
     current_title: Optional[str] = None
+    error_message: Optional[str] = None
+    redirect: Optional[str] = None
 
 
 class AnalysisResult(BaseModel):

@@ -20,6 +20,8 @@ async def init_db():
         await conn.run_sync(_ensure_results_analysis_status)
         await conn.run_sync(_ensure_tasks_error_message)
         await conn.run_sync(_ensure_tasks_search_engine_used)
+        await conn.run_sync(_ensure_tasks_progress_json)
+        await conn.run_sync(_ensure_tasks_stop_requested)
 
 
 def _ensure_column(sync_conn, table, column, ddl):
@@ -55,3 +57,13 @@ def _ensure_tasks_error_message(sync_conn):
 def _ensure_tasks_search_engine_used(sync_conn):
     _ensure_column(sync_conn, "tasks", "search_engine_used",
                    "ALTER TABLE tasks ADD COLUMN search_engine_used VARCHAR(20)")
+
+
+def _ensure_tasks_progress_json(sync_conn):
+    _ensure_column(sync_conn, "tasks", "progress_json",
+                   "ALTER TABLE tasks ADD COLUMN progress_json TEXT")
+
+
+def _ensure_tasks_stop_requested(sync_conn):
+    _ensure_column(sync_conn, "tasks", "stop_requested",
+                   "ALTER TABLE tasks ADD COLUMN stop_requested BOOLEAN DEFAULT 0")

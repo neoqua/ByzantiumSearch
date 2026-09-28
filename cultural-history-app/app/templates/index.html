@@ -186,20 +186,22 @@ document.getElementById('search-form').onsubmit = async function(e) {
         body: JSON.stringify(data),
     });
     const result = await resp.json();
+    const taskId = result.task_id;
 
     document.getElementById('search-form').style.display = 'none';
     document.getElementById('progress').style.display = 'block';
 
-    const evtSource = new EventSource(`/api/tasks/${result.task_id}/progress`);
     const stopBtn = document.getElementById('stop-btn');
     stopBtn.style.display = 'inline-block';
     stopBtn.onclick = async function() {
         stopBtn.disabled = true;
         stopBtn.textContent = 'Остановка...';
-        await fetch(`/api/tasks/${result.task_id}/stop`, {method: 'POST'});
+        await fetch(`/api/tasks/${taskId}/stop`, {method: 'POST'});
     };
-    evtSource.addEventListener('progress', function(event) {
-        const data = JSON.parse(event.data);
+
+    let retriedSse = false;
+
+    function applyProgress(data) {
         const pct = data.total > 0 ? Math.round(data.processed / data.total * 100) : 0;
         document.getElementById('progress-fill').style.width = pct + '%';
         document.getElementById('progress-status').innerHTML =
@@ -217,16 +219,51 @@ document.getElementById('search-form').onsubmit = async function(e) {
                 progressTextEl.appendChild(link);
             }
         }
-    });
-    evtSource.addEventListener('done', function(event) {
-        evtSource.close();
+    }
+
+    function goToResults(redirect) {
         stopBtn.style.display = 'none';
-        window.location.href = JSON.parse(event.data).redirect;
-    });
-    evtSource.addEventListener('error', function(event) {
+        window.location.href = redirect || `/results/${taskId}`;
+    }
+
+    async function recoverFromSseError(evtSource) {
         evtSource.close();
-        document.getElementById('progress-text').innerHTML = '<div class="error">Ошибка при выполнении анализа</div>';
-    });
+        try {
+            const r = await fetch(`/api/tasks/${taskId}`);
+            if (r.ok) {
+                const body = await r.json();
+                if (body.redirect || ['completed', 'stopped', 'failed'].indexOf(body.status) !== -1) {
+                    goToResults(body.redirect);
+                    return;
+                }
+                if (!retriedSse && (body.status === 'processing' || body.status === 'pending')) {
+                    retriedSse = true;
+                    applyProgress(body);
+                    openProgressStream();
+                    return;
+                }
+            }
+        } catch (e) {}
+        document.getElementById('progress-text').innerHTML =
+            '<div class="error">Ошибка при выполнении анализа</div>';
+        stopBtn.style.display = 'none';
+    }
+
+    function openProgressStream() {
+        const evtSource = new EventSource(`/api/tasks/${taskId}/progress`);
+        evtSource.addEventListener('progress', function(event) {
+            applyProgress(JSON.parse(event.data));
+        });
+        evtSource.addEventListener('done', function(event) {
+            evtSource.close();
+            goToResults(JSON.parse(event.data).redirect);
+        });
+        evtSource.addEventListener('error', function() {
+            recoverFromSseError(evtSource);
+        });
+    }
+
+    openProgressStream();
 };
 
 document.getElementById('llm-provider').addEventListener('change', function() {

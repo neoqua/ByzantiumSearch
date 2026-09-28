@@ -1,11 +1,15 @@
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy import Column, String, Integer, Float, Boolean, Text, DateTime, ForeignKey
 from sqlalchemy.orm import DeclarativeBase, relationship
 
 
 class Base(DeclarativeBase):
     pass
+
+
+def utcnow():
+    return datetime.now(timezone.utc)
 
 
 def generate_uuid():
@@ -23,8 +27,10 @@ class Task(Base):
     search_engine = Column(String, nullable=False, default="searxng")
     search_engine_used = Column(String, nullable=True)
     error_message = Column(Text, nullable=True)
+    progress_json = Column(Text, nullable=True)
+    stop_requested = Column(Boolean, default=False)
     status = Column(String, default="pending")
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=utcnow)
     completed_at = Column(DateTime, nullable=True)
 
     results = relationship("Result", back_populates="task", cascade="all, delete-orphan")
@@ -47,7 +53,7 @@ class Result(Base):
     analysis_status = Column(String, nullable=False, default="ok")
     relevance_score = Column(Float, default=0.0)
     raw_text_hash = Column(String, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=utcnow)
 
     task = relationship("Task", back_populates="results")
 
@@ -60,4 +66,4 @@ class UrlCache(Base):
     keywords = Column(Text, nullable=False)
     result_json = Column(Text, nullable=True)
     raw_text_hash = Column(String, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=utcnow)

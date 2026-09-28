@@ -1,24 +1,70 @@
 import json
 import logging
-from datetime import datetime
 from typing import Dict, Any, Optional
 
+from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
 from app.database import async_session
-from app.models import Task, Result, UrlCache
+from app.models import Task, Result, UrlCache, utcnow
 from app.search import search_urls_detailed
 from app.scraper import fetch_and_analyze
 from app.schemas import LLMSettings
 
 logger = logging.getLogger(__name__)
 
-# In-memory progress store: task_id -> dict
+_PROGRESS_KEYS = (
+    "status", "processed", "total", "found_keyword", "current_url", "current_title",
+)
+
+# In-memory progress store: task_id -> dict (fast path while the process lives)
 _progress_store: Dict[str, Dict[str, Any]] = {}
 
 
 def get_progress(task_id: str) -> Optional[Dict[str, Any]]:
     return _progress_store.get(task_id)
+
+
+def seed_progress(task_id: str) -> Dict[str, Any]:
+    entry = {
+        "status": "pending",
+        "processed": 0,
+        "total": 0,
+        "found_keyword": 0,
+        "current_url": None,
+        "current_title": None,
+    }
+    _progress_store[task_id] = entry
+    return entry
+
+
+def public_progress(entry: Dict[str, Any]) -> Dict[str, Any]:
+    return {k: entry.get(k) for k in _PROGRESS_KEYS}
+
+
+def progress_from_task(task: Task) -> Dict[str, Any]:
+    data: Dict[str, Any] = {}
+    if task.progress_json:
+        try:
+            parsed = json.loads(task.progress_json)
+            if isinstance(parsed, dict):
+                data = parsed
+        except json.JSONDecodeError:
+            data = {}
+    out = {
+        "status": task.status,
+        "processed": data.get("processed", 0) or 0,
+        "total": data.get("total", 0) or 0,
+        "found_keyword": data.get("found_keyword", 0) or 0,
+        "current_url": data.get("current_url"),
+        "current_title": data.get("current_title"),
+        "error_message": task.error_message,
+    }
+    return out
+
+
+def forget_progress(task_id: str) -> None:
+    _progress_store.pop(task_id, None)
 
 
 def _split_keywords(keywords_raw: str):
@@ -35,18 +81,64 @@ def _cache_keywords(keywords):
     return ",".join(keywords) + "#kwv3"
 
 
+def _dump_progress(entry: Dict[str, Any]) -> str:
+    return json.dumps(public_progress(entry), ensure_ascii=False)
+
+
+async def fail_interrupted_tasks() -> int:
+    """Mark pending/processing tasks as failed — they cannot survive a process restart."""
+    async with async_session() as session:
+        stmt = select(Task).where(Task.status.in_(("pending", "processing")))
+        tasks = (await session.execute(stmt)).scalars().all()
+        if not tasks:
+            return 0
+        now = utcnow()
+        for task in tasks:
+            task.status = "failed"
+            task.error_message = "прервано перезапуском"
+            task.completed_at = now
+            entry = progress_from_task(task)
+            entry["status"] = "failed"
+            task.progress_json = json.dumps(
+                {k: entry.get(k) for k in _PROGRESS_KEYS}, ensure_ascii=False
+            )
+        await session.commit()
+        return len(tasks)
+
+
+async def request_stop(task_id: str) -> bool:
+    found_live = False
+    progress = _progress_store.get(task_id)
+    if progress is not None:
+        progress["stop_requested"] = True
+        found_live = True
+    async with async_session() as session:
+        task = await session.get(Task, task_id)
+        if task is None:
+            return False
+        if task.status in ("pending", "processing"):
+            task.stop_requested = True
+            await session.commit()
+            return True
+        return found_live
+
+
 async def _mark_task_failed(task_id: str, error_message: Optional[str] = None):
     try:
         async with async_session() as session:
             task = await session.get(Task, task_id)
             if task:
                 task.status = "failed"
-                task.completed_at = datetime.utcnow()
+                task.completed_at = utcnow()
                 if error_message:
                     task.error_message = error_message
+                entry = _progress_store.get(task_id) or progress_from_task(task)
+                entry["status"] = "failed"
+                task.progress_json = _dump_progress(entry)
                 await session.commit()
     except Exception as e:
         logger.error("Failed to mark task %s as failed: %s", task_id, e)
+    forget_progress(task_id)
 
 
 async def _persist_engine_used(task_id: str, engine_used: str):
@@ -71,22 +163,26 @@ async def run_analysis(
     keywords = _split_keywords(keywords_raw)
     manual_urls = _split_urls(manual_urls_raw)
 
-    _progress_store[task_id] = {
-        "status": "processing",
-        "processed": 0,
-        "total": 0,
-        "found_keyword": 0,
-        "current_url": None,
-        "current_title": None,
-    }
+    entry = _progress_store.get(task_id) or seed_progress(task_id)
+    entry.update(
+        status="processing",
+        processed=0,
+        total=0,
+        found_keyword=0,
+        current_url=None,
+        current_title=None,
+    )
 
     try:
         async with async_session() as session:
             task = await session.get(Task, task_id)
             if not task:
+                forget_progress(task_id)
                 return
             task.status = "processing"
             task.error_message = None
+            task.stop_requested = False
+            task.progress_json = _dump_progress(entry)
             await session.commit()
 
         all_urls = []
@@ -117,13 +213,13 @@ async def run_analysis(
                 msg = (
                     "Поиск не вернул ни одного URL, и список ручных ссылок пуст."
                 )
-            await _mark_task_failed(task_id, msg)
             if task_id in _progress_store:
                 _progress_store[task_id]["status"] = "failed"
+            await _mark_task_failed(task_id, msg)
             return
 
         total = len(all_urls)
-        _progress_store[task_id]["total"] = total
+        entry["total"] = total
 
         processed = 0
         found_keyword = 0
@@ -131,18 +227,22 @@ async def run_analysis(
         stopped = False
 
         async with async_session() as session:
-            for entry in all_urls:
-                if _progress_store[task_id].get("stop_requested"):
+            task = await session.get(Task, task_id)
+            for item in all_urls:
+                if task:
+                    await session.refresh(task)
+                if (
+                    (task and task.stop_requested)
+                    or entry.get("stop_requested")
+                    or _progress_store.get(task_id, {}).get("stop_requested")
+                ):
                     stopped = True
                     break
 
-                url = entry["url"]
-                title = entry["title"]
+                url = item["url"]
+                title = item["title"]
 
-                _progress_store[task_id].update(
-                    current_url=url,
-                    current_title=title,
-                )
+                entry.update(current_url=url, current_title=title)
 
                 cached = await session.get(UrlCache, url)
                 if (
@@ -178,6 +278,7 @@ async def run_analysis(
                                 await session.commit()
                             except IntegrityError:
                                 await session.rollback()
+                                task = await session.get(Task, task_id)
                                 existing = await session.get(UrlCache, url)
                                 if existing and existing.keywords == cache_keywords:
                                     llm_data = (
@@ -216,23 +317,26 @@ async def run_analysis(
                     analysis_status=analysis_status,
                 )
                 session.add(result_entry)
-                await session.commit()
 
                 processed += 1
-                _progress_store[task_id].update(
-                    processed=processed,
-                    found_keyword=found_keyword,
-                )
-
-            task = await session.get(Task, task_id)
-            if task:
-                task.status = "stopped" if stopped else "completed"
-                task.completed_at = datetime.utcnow()
+                entry.update(processed=processed, found_keyword=found_keyword)
+                if task:
+                    task.progress_json = _dump_progress(entry)
                 await session.commit()
 
-        _progress_store[task_id]["status"] = "stopped" if stopped else "completed"
+            final_status = "stopped" if stopped else "completed"
+            if task:
+                task.status = final_status
+                task.completed_at = utcnow()
+                entry["status"] = final_status
+                task.progress_json = _dump_progress(entry)
+                await session.commit()
+
+        if task_id in _progress_store:
+            _progress_store[task_id]["status"] = "stopped" if stopped else "completed"
+        forget_progress(task_id)
     except Exception as e:
         logger.exception("Analysis failed for task %s: %s", task_id, e)
-        await _mark_task_failed(task_id, str(e))
         if task_id in _progress_store:
             _progress_store[task_id]["status"] = "failed"
+        await _mark_task_failed(task_id, str(e))

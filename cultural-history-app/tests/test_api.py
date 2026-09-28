@@ -121,6 +121,43 @@ async def test_stop_sets_flag(api_client):
 
 
 @pytest.mark.asyncio
+async def test_get_task_status_from_db_when_store_empty(api_client):
+    from app.database import async_session
+    from app.models import Task
+    from app.analyzer import forget_progress
+
+    async with async_session() as s:
+        task = Task(
+            object_name="Obj", keywords="kw", search_engine="openserp",
+            status="completed",
+            progress_json='{"status":"completed","processed":4,"total":4,"found_keyword":2,"current_url":null,"current_title":null}',
+        )
+        s.add(task)
+        await s.commit()
+        task_id = task.id
+    forget_progress(task_id)
+
+    resp = await api_client.get(f"/api/tasks/{task_id}")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["status"] == "completed"
+    assert body["processed"] == 4
+    assert body["found_keyword"] == 2
+    assert body["redirect"] == f"/results/{task_id}"
+
+    sse = await api_client.get(f"/api/tasks/{task_id}/progress")
+    assert sse.status_code == 200
+    assert "event: done" in sse.text
+    assert f"/results/{task_id}" in sse.text
+
+
+@pytest.mark.asyncio
+async def test_get_task_status_unknown(api_client):
+    resp = await api_client.get("/api/tasks/no-such-id")
+    assert resp.status_code == 404
+
+
+@pytest.mark.asyncio
 async def test_llm_test_endpoint_ok(monkeypatch):
     class FakeProvider:
         async def complete(self, prompt):

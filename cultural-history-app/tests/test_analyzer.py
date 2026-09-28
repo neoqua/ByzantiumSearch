@@ -167,3 +167,68 @@ async def test_fetch_and_analyze_llm_failed_still_matches_keywords(monkeypatch):
 def test_cache_key_bumped_for_status_change():
     assert _cache_keywords(["a", "b"]).endswith("#kwv3")
     assert "#kwv2" not in _cache_keywords(["a"])
+
+
+@pytest.mark.asyncio
+async def test_fail_interrupted_tasks_marks_pending_and_processing():
+    await init_db()
+    async with async_session() as s:
+        pending = Task(object_name="A", keywords="k", search_engine="openserp", status="pending")
+        running = Task(object_name="B", keywords="k", search_engine="openserp", status="processing")
+        done = Task(object_name="C", keywords="k", search_engine="openserp", status="completed")
+        s.add_all([pending, running, done])
+        await s.commit()
+        ids = (pending.id, running.id, done.id)
+
+    from app.analyzer import fail_interrupted_tasks, get_progress
+    n = await fail_interrupted_tasks()
+    assert n >= 2
+
+    async with async_session() as s:
+        a = await s.get(Task, ids[0])
+        b = await s.get(Task, ids[1])
+        c = await s.get(Task, ids[2])
+        assert a.status == "failed"
+        assert b.status == "failed"
+        assert "перезапуском" in (a.error_message or "")
+        assert c.status == "completed"
+        assert get_progress(ids[0]) is None
+
+
+@pytest.mark.asyncio
+async def test_progress_json_persisted_and_store_cleared(monkeypatch):
+    await init_db()
+
+    async def one_url(*args, **kwargs):
+        return [{"url": "https://ok.example/x", "title": "X"}], "openserp", False
+
+    async def ok_fetch(url, object_name, keywords, title, llm_settings=None):
+        return {
+            "url": url, "title": title, "mentions_object": True, "has_keyword": True,
+            "keyword_found": "kw", "date_mentioned": None, "publication_date": None,
+            "author_location": None, "source_type": "blog", "relevance_score": 0.5,
+            "raw_text_hash": "h", "analysis_status": "ok",
+        }
+
+    monkeypatch.setattr("app.analyzer.search_urls_detailed", one_url)
+    monkeypatch.setattr("app.analyzer.fetch_and_analyze", ok_fetch)
+
+    from app.analyzer import get_progress
+    import json as json_mod
+
+    async with async_session() as s:
+        task = Task(object_name="Obj", keywords="kw", search_engine="openserp", status="pending")
+        s.add(task)
+        await s.commit()
+        task_id = task.id
+
+    await run_analysis(task_id, "Obj", "kw", None, None, "openserp")
+
+    assert get_progress(task_id) is None
+    async with async_session() as s:
+        task = await s.get(Task, task_id)
+        assert task.status == "completed"
+        data = json_mod.loads(task.progress_json)
+        assert data["processed"] == 1
+        assert data["total"] == 1
+        assert data["status"] == "completed"
