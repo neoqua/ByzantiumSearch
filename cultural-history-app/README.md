@@ -64,6 +64,18 @@ From `cultural-history-app/` with the venv active (Linux/Mac):
 python -m pytest -q
 ```
 
-All tests are offline (HTTP is mocked with `pytest-httpx`). On the Windows dev
-machine `pytest` was observed to hang at collection — see AGENTS.md Known
-issues for the `python -c` fallback.
+All tests are offline (HTTP is mocked with `pytest-httpx`).
+
+On the Windows dev machine `pytest` was observed to hang at collection
+(Python 3.13). `pytest.ini` now disables the unused `anyio` plugin and sets
+`faulthandler_timeout = 60`, so a stalled run prints the stack of every thread
+after a minute instead of hanging silently — include that output when
+reporting the problem. Until the cause is confirmed, run the suite inside the
+Linux app image instead (Docker Desktop, from `cultural-history-app/`):
+
+```powershell
+docker compose build app
+docker run --rm -v "${PWD}:/app" -w /app cultural-history-app-app python -m pytest -q
+```
+
+See AGENTS.md Known issues for the diagnostic steps and the `python -c` fallback.
