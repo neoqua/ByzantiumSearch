@@ -15,24 +15,38 @@ search:
 engines:
   - name: google
     engine: google
-    shortcut: g
-
-  - name: duckduckgo
-    engine: duckduckgo
-    shortcut: ddg
-
-  - name: yandex
-    engine: yandex
-    categories: general
-    search_type: web
-    shortcut: yd
+    shortcut: go
+    inactive: false
     disabled: false
 
+  - name: google cse
+    disabled: true
+
+  - name: google news
+    inactive: true
+
+  - name: duckduckgo
+    disabled: true
+
+  - name: duckduckgo images
+    disabled: true
+
+  - name: yandex
+    disabled: true
+
+  - name: brave
+    disabled: true
+
+  - name: startpage
+    disabled: true
+
+  - name: bing
+    disabled: true
+
+  - name: yahoo
+    disabled: true
+
 outgoing:
-  request_timeout: 10.0
-  max_request_timeout: 20.0
+  request_timeout: 15.0
+  max_request_timeout: 25.0
   useragent_suffix: ""
-  # If behind a proxy, uncomment:
-  # proxies:
-  #   all://:
-  #     - socks5h://proxy:1080

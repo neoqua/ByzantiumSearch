@@ -17,7 +17,7 @@ class SearchRequest(BaseModel):
     annual_visitors: Optional[int] = None
     manual_urls: Optional[str] = None
     llm_settings: Optional[LLMSettings] = None
-    search_engine: Literal["searxng", "openserp"] = "searxng"
+    search_engine: Literal["searxng", "openserp"] = "openserp"
 
 
 class TaskStatus(BaseModel):

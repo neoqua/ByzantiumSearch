@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from typing import List, Dict
 import httpx
@@ -34,8 +35,11 @@ async def _search_searxng(object_name: str, keywords: List[str]) -> List[Dict[st
     seen_urls: set = set()
     results: List[Dict[str, str]] = []
 
+    delay = settings.search_delay_between_queries
     async with httpx.AsyncClient(timeout=30.0) as client:
-        for query in queries:
+        for i, query in enumerate(queries):
+            if i > 0:
+                await asyncio.sleep(delay)
             try:
                 for page in range(1, settings.search_max_pages + 1):
                     params = {
@@ -68,11 +72,14 @@ async def _search_openserp(object_name: str, keywords: List[str]) -> List[Dict[s
     mode = settings.openserp_mode
     limit = settings.openserp_results_limit
 
+    delay = settings.search_delay_between_queries
     async with httpx.AsyncClient(timeout=30.0) as client:
-        for query in queries:
+        for i, query in enumerate(queries):
+            if i > 0:
+                await asyncio.sleep(delay)
             try:
                 start = 0
-                for _round in range(5):
+                for _round in range(settings.search_max_pages):
                     params = {
                         "text": query,
                         "engines": engines,
@@ -102,9 +109,14 @@ async def _search_openserp(object_name: str, keywords: List[str]) -> List[Dict[s
 async def search_urls(
     object_name: str, keywords: List[str], engine: str = "searxng"
 ) -> List[Dict[str, str]]:
-    if engine == "openserp":
-        results = await _search_openserp(object_name, keywords)
-    else:
+    if engine == "searxng":
         results = await _search_searxng(object_name, keywords)
+        if not results:
+            logger.warning(
+                "SearXNG returned 0 results, falling back to OpenSERP"
+            )
+            results = await _search_openserp(object_name, keywords)
+    else:
+        results = await _search_openserp(object_name, keywords)
     results.sort(key=_sort_key)
     return results
