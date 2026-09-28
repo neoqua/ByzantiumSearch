@@ -10,7 +10,7 @@ import pytest
 from sqlalchemy import select
 
 from app.database import init_db, async_session
-from app.models import Task, Result, UrlCache
+from app.models import Task, Result, UrlCacheV2
 from app.analyzer import run_analysis, _cache_keywords
 from app.scraper import fetch_and_analyze
 
@@ -124,16 +124,18 @@ async def test_fetch_failed_not_cached(monkeypatch):
         rows = (await s.execute(select(Result).where(Result.task_id == task_id))).scalars().all()
         assert rows[0].analysis_status == "fetch_failed"
         assert rows[0].mentions_object is False
-        cached = await s.get(UrlCache, "https://down.example/x")
+        cached = await s.get(
+            UrlCacheV2, ("https://down.example/x", "Obj", _cache_keywords(["kw"]))
+        )
         assert cached is None
 
 
 @pytest.mark.asyncio
 async def test_fetch_and_analyze_fetch_failed(monkeypatch):
-    async def no_text(url, client=None):
+    async def no_bytes(url, client=None):
         return None
 
-    monkeypatch.setattr("app.scraper.fetch_page_text", no_text)
+    monkeypatch.setattr("app.scraper.fetch_page_bytes", no_bytes)
     result = await fetch_and_analyze("https://x", "Obj", ["Византия"], "t")
     assert result["analysis_status"] == "fetch_failed"
     assert result["mentions_object"] is False
@@ -142,7 +144,7 @@ async def test_fetch_and_analyze_fetch_failed(monkeypatch):
 @pytest.mark.asyncio
 async def test_fetch_and_analyze_llm_failed_still_matches_keywords(monkeypatch):
     async def page(url, client=None):
-        return "Текст про Византию на странице"
+        return "<p>Текст про Византию на странице</p>".encode("utf-8")
 
     async def llm_fail(*args, **kwargs):
         return {
@@ -157,7 +159,7 @@ async def test_fetch_and_analyze_llm_failed_still_matches_keywords(monkeypatch):
             "analysis_status": "llm_failed",
         }
 
-    monkeypatch.setattr("app.scraper.fetch_page_text", page)
+    monkeypatch.setattr("app.scraper.fetch_page_bytes", page)
     monkeypatch.setattr("app.scraper.analyze_text_with_retry", llm_fail)
     result = await fetch_and_analyze("https://x", "Obj", ["Византия"], "t")
     assert result["analysis_status"] == "llm_failed"
@@ -165,9 +167,38 @@ async def test_fetch_and_analyze_llm_failed_still_matches_keywords(monkeypatch):
     assert "византию" in (result["keyword_found"] or "")
 
 
+@pytest.mark.asyncio
+async def test_fetch_and_analyze_prefers_page_date_over_llm(monkeypatch):
+    html = (
+        '<html><head><meta property="article:published_time" '
+        'content="2021-03-15T00:00:00Z"></head>'
+        "<body><p>Текст про Византию</p></body></html>"
+    ).encode("utf-8")
+
+    async def page(url, client=None):
+        return html
+
+    async def llm_ok(*args, **kwargs):
+        return {
+            "mentions_object": True,
+            "publication_date": "01.01.1999",
+            "date_mentioned": None,
+            "author_location": None,
+            "relevance_score": 0.5,
+            "source_type": "blog",
+            "analysis_status": "ok",
+        }
+
+    monkeypatch.setattr("app.scraper.fetch_page_bytes", page)
+    monkeypatch.setattr("app.scraper.analyze_text_with_retry", llm_ok)
+    result = await fetch_and_analyze("https://x", "Obj", ["Византия"], "t")
+    assert result["publication_date"] == "15.03.2021"
+    assert result["date_source"] == "page"
+
+
 def test_cache_key_bumped_for_status_change():
-    assert _cache_keywords(["a", "b"]).endswith("#kwv3")
-    assert "#kwv2" not in _cache_keywords(["a"])
+    assert _cache_keywords(["a", "b"]).endswith("#kwv4")
+    assert "#kwv3" not in _cache_keywords(["a"])
 
 
 @pytest.mark.asyncio
@@ -380,4 +411,44 @@ async def test_url_fetch_concurrency_is_capped(monkeypatch):
     async with async_session() as s:
         rows = (await s.execute(select(Result).where(Result.task_id == task_id))).scalars().all()
         assert len(rows) == 5
+
+
+@pytest.mark.asyncio
+async def test_cache_not_shared_across_objects(monkeypatch):
+    await init_db()
+    calls = []
+
+    async def one_url(*args, **kwargs):
+        return [{"url": "https://shared.example/post", "title": "X"}], "openserp", False
+
+    async def tracking_fetch(url, object_name, keywords, title, llm_settings=None, client=None):
+        calls.append(object_name)
+        return {
+            "url": url, "title": title, "mentions_object": True, "has_keyword": False,
+            "keyword_found": None, "date_mentioned": None, "publication_date": None,
+            "author_location": None, "source_type": "blog", "relevance_score": 0.5,
+            "raw_text_hash": "h", "analysis_status": "ok", "date_source": None,
+        }
+
+    monkeypatch.setattr("app.analyzer.search_urls_detailed", one_url)
+    monkeypatch.setattr("app.analyzer.fetch_and_analyze", tracking_fetch)
+
+    ids = []
+    async with async_session() as s:
+        for name in ("Монастырь А", "Монастырь Б"):
+            task = Task(object_name=name, keywords="kw", search_engine="openserp", status="pending")
+            s.add(task)
+            await s.commit()
+            ids.append((task.id, name))
+
+    for task_id, name in ids:
+        await run_analysis(task_id, name, "kw", None, None, "openserp")
+
+    assert calls == ["Монастырь А", "Монастырь Б"]
+    async with async_session() as s:
+        a = await s.get(UrlCacheV2, ("https://shared.example/post", "Монастырь А", _cache_keywords(["kw"])))
+        b = await s.get(UrlCacheV2, ("https://shared.example/post", "Монастырь Б", _cache_keywords(["kw"])))
+        assert a is not None and b is not None
+        assert a.result_json != "" or b.result_json != ""
+
 

@@ -6,6 +6,7 @@ from bs4 import BeautifulSoup
 from app.config import settings
 from app.llm import analyze_text_with_retry
 from app.keyword_match import match_keywords
+from app.page_dates import extract_publication_date
 from app.schemas import LLMSettings
 
 logger = logging.getLogger(__name__)
@@ -52,6 +53,7 @@ def _blank_analysis(url: str, title: str, status: str) -> dict:
         "relevance_score": 0.0,
         "raw_text_hash": None,
         "analysis_status": status,
+        "date_source": None,
     }
 
 
@@ -64,9 +66,9 @@ def make_http_client() -> httpx.AsyncClient:
     )
 
 
-async def fetch_page_text(
+async def fetch_page_bytes(
     url: str, client: Optional[httpx.AsyncClient] = None
-) -> Optional[str]:
+) -> Optional[bytes]:
     own = client is None
     if own:
         client = make_http_client()
@@ -75,7 +77,7 @@ async def fetch_page_text(
         if resp.status_code != 200:
             logger.warning("HTTP %d for %s", resp.status_code, url)
             return None
-        return extract_text(resp.content) or None
+        return resp.content or None
     except Exception as e:
         logger.warning("Failed to fetch %s: %s", url, e)
         return None
@@ -84,15 +86,28 @@ async def fetch_page_text(
             await client.aclose()
 
 
+async def fetch_page_text(
+    url: str, client: Optional[httpx.AsyncClient] = None
+) -> Optional[str]:
+    raw = await fetch_page_bytes(url, client=client)
+    if not raw:
+        return None
+    return extract_text(raw) or None
+
+
 async def fetch_and_analyze(
     url: str, object_name: str, keywords: list[str], title: str,
     llm_settings: Optional[LLMSettings] = None,
     client: Optional[httpx.AsyncClient] = None,
 ) -> dict:
-    text = await fetch_page_text(url, client=client)
+    raw = await fetch_page_bytes(url, client=client)
+    if not raw:
+        return _blank_analysis(url, title, "fetch_failed")
+    text = extract_text(raw) or None
     if not text:
         return _blank_analysis(url, title, "fetch_failed")
     h = text_hash(text)
+    page_date = extract_publication_date(raw)
     llm_result = await analyze_text_with_retry(
         object_name, keywords, title, text, llm_settings=llm_settings
     )
@@ -104,4 +119,11 @@ async def fetch_and_analyze(
     llm_result["has_keyword"] = bool(matched_kw)
     llm_result["keyword_found"] = ", ".join(matched_forms) if matched_forms else None
     llm_result.setdefault("analysis_status", "ok")
+    if page_date:
+        llm_result["publication_date"] = page_date
+        llm_result["date_source"] = "page"
+    elif llm_result.get("publication_date"):
+        llm_result["date_source"] = "llm"
+    else:
+        llm_result["date_source"] = None
     return llm_result

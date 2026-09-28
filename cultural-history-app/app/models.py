@@ -51,6 +51,7 @@ class Result(Base):
     author_location = Column(String, nullable=True)
     source_type = Column(String, nullable=True)
     analysis_status = Column(String, nullable=False, default="ok")
+    date_source = Column(String, nullable=True)
     relevance_score = Column(Float, default=0.0)
     raw_text_hash = Column(String, nullable=True)
     created_at = Column(DateTime, default=utcnow)
@@ -59,11 +60,26 @@ class Result(Base):
 
 
 class UrlCache(Base):
+    """Legacy single-URL cache. Kept so existing SQLite files still load."""
+
     __tablename__ = "url_cache"
 
     url = Column(String, primary_key=True)
     object_name = Column(String, nullable=False)
     keywords = Column(Text, nullable=False)
+    result_json = Column(Text, nullable=True)
+    raw_text_hash = Column(String, nullable=True)
+    created_at = Column(DateTime, default=utcnow)
+
+
+class UrlCacheV2(Base):
+    """Cache keyed by URL + object + keywords so objects do not share rows."""
+
+    __tablename__ = "url_cache_v2"
+
+    url = Column(String, primary_key=True)
+    object_name = Column(String, primary_key=True)
+    keywords = Column(String, primary_key=True)
     result_json = Column(Text, nullable=True)
     raw_text_hash = Column(String, nullable=True)
     created_at = Column(DateTime, default=utcnow)

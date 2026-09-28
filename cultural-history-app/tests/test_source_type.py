@@ -9,11 +9,6 @@ def test_ugc_domain():
     assert classify_source("https://otzovik.com/reviews/obj123/", "") == "ugc"
 
 
-def test_ugc_domain():
-    assert classify_source("https://user123.livejournal.com/1200.html", "") == "ugc"
-    assert classify_source("https://otzovik.com/reviews/obj123/", "") == "ugc"
-
-
 def test_ugc_url_marker():
     assert classify_source("https://example.com/otzyvy/123/", "Читать") == "ugc"
     assert classify_source("https://example.com/forum/thread/1", "Тема") == "ugc"

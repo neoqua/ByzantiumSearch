@@ -48,6 +48,7 @@ class AnalysisResult(BaseModel):
     author_location: Optional[str] = None
     source_type: Optional[str] = None
     analysis_status: str = "ok"
+    date_source: Optional[str] = None
     relevance_score: float = 0.0
 
 

@@ -78,6 +78,32 @@
     <button type="submit">Запустить анализ</button>
 </form>
 
+{% if recent_tasks %}
+<div class="history">
+    <h2>Недавние анализы</h2>
+    <table>
+        <thead>
+            <tr>
+                <th>Дата</th>
+                <th>Объект</th>
+                <th>Статус</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for t in recent_tasks %}
+            <tr>
+                <td>{% if t.created_at %}{{ t.created_at.strftime('%d.%m.%Y %H:%M') }}{% else %}—{% endif %}</td>
+                <td>{{ t.object_name }}</td>
+                <td class="status-{{ t.status }}">{{ status_labels.get(t.status, t.status) }}</td>
+                <td><a href="/results/{{ t.id }}">отчёт</a></td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endif %}
+
 <div id="progress" style="display:none;">
     <h2>Анализ выполняется...</h2>
     <div id="progress-status"></div>

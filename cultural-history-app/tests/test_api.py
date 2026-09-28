@@ -30,10 +30,16 @@ async def api_client(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_index_returns_html(api_client):
+async def test_index_lists_recent_tasks(api_client):
+    create = await api_client.post("/api/search", json={
+        "object_name": "Инкерманский монастырь", "keywords": "Византия",
+    })
+    assert create.status_code == 200
     resp = await api_client.get("/")
     assert resp.status_code == 200
-    assert "text/html" in resp.headers["content-type"]
+    assert "Недавние анализы" in resp.text
+    assert "Инкерманский монастырь" in resp.text
+    assert "отчёт" in resp.text
 
 
 @pytest.mark.asyncio

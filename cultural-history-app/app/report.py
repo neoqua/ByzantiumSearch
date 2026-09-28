@@ -9,11 +9,20 @@ from app.schemas import ReportData, AnalysisResult
 from app.source_type import format_source_mix
 
 
+_DATE_SOURCE_LABEL = {
+    "page": "со страницы",
+    "llm": "из модели",
+}
+
 _STATUS_CSV = {
     "ok": "ок",
     "fetch_failed": "не скачано",
     "llm_failed": "LLM не ответил",
 }
+
+
+def format_date_source(source: Optional[str]) -> str:
+    return _DATE_SOURCE_LABEL.get(source or "", "")
 
 
 def format_search_engine(requested: Optional[str], used: Optional[str]) -> str:
@@ -72,6 +81,7 @@ async def build_report(task_id: str, session: AsyncSession) -> Optional[ReportDa
             relevance_score=r.relevance_score or 0.0,
             source_type=r.source_type,
             analysis_status=r.analysis_status or "ok",
+            date_source=getattr(r, "date_source", None),
         )
         for r in result_rows
     ]
@@ -107,7 +117,7 @@ def report_to_csv(report: ReportData) -> str:
     writer = csv.writer(buf, delimiter=";", lineterminator="\r\n")
     writer.writerow([
         "№", "URL", "Заголовок", "Источник", "Ключевые слова",
-        "Дата", "Геопривязка", "Релевантность", "Упоминает объект", "Статус",
+        "Дата", "Источник даты", "Геопривязка", "Релевантность", "Упоминает объект", "Статус",
     ])
     for i, r in enumerate(report.results, 1):
         date_val = r.publication_date or r.date_mentioned or ""
@@ -120,6 +130,7 @@ def report_to_csv(report: ReportData) -> str:
             r.source_type or "",
             r.keyword_found or "",
             date_val,
+            format_date_source(r.date_source),
             r.author_location or "",
             r.relevance_score,
             mentions_val,

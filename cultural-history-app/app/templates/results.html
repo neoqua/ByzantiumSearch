@@ -90,7 +90,7 @@
             <td>{{ r.title or '—' }}</td>
             <td>{{ r.source_type or '—' }}</td>
             <td>{{ r.keyword_found or '—' }}</td>
-            <td>{{ r.publication_date or r.date_mentioned or '—' }}</td>
+            <td>{{ r.publication_date or r.date_mentioned or '—' }}{% if r.date_source %}<br><span class="hint">{% if r.date_source == 'page' %}со страницы{% elif r.date_source == 'llm' %}из модели{% endif %}</span>{% endif %}</td>
             <td>{{ r.author_location or '—' }}</td>
             <td>{{ r.relevance_score }}</td>
             <td>{% if r.analysis_status != 'ok' %}—{% elif r.mentions_object %}да{% else %}нет{% endif %}</td>

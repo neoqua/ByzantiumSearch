@@ -9,7 +9,7 @@ from sqlalchemy.exc import IntegrityError
 
 from app.config import settings
 from app.database import async_session
-from app.models import Task, Result, UrlCache, utcnow
+from app.models import Task, Result, UrlCacheV2, utcnow
 from app.search import search_urls_detailed
 from app.scraper import fetch_and_analyze, make_http_client, _blank_analysis
 from app.source_type import classify_source, count_source_mix, is_travel_blog_host
@@ -89,7 +89,7 @@ def _split_urls(urls_raw: Optional[str]):
 
 
 def _cache_keywords(keywords):
-    return ",".join(keywords) + "#kwv3"
+    return ",".join(keywords) + "#kwv4"
 
 
 def _dump_progress(entry: Dict[str, Any]) -> str:
@@ -208,14 +208,13 @@ async def _write_cache_and_result(
     analysis_status = llm_data.get("analysis_status") or "ok"
     if write_cache and analysis_status == "ok":
         payload = json.dumps(llm_data, ensure_ascii=False)
-        cached = await session.get(UrlCache, url)
+        pk = (url, object_name, cache_keywords)
+        cached = await session.get(UrlCacheV2, pk)
         if cached:
-            cached.object_name = object_name
-            cached.keywords = cache_keywords
             cached.result_json = payload
             cached.raw_text_hash = llm_data.get("raw_text_hash")
         else:
-            session.add(UrlCache(
+            session.add(UrlCacheV2(
                 url=url,
                 object_name=object_name,
                 keywords=cache_keywords,
@@ -227,10 +226,8 @@ async def _write_cache_and_result(
             except IntegrityError:
                 await session.rollback()
                 task = await session.get(Task, task_id)
-                existing = await session.get(UrlCache, url)
+                existing = await session.get(UrlCacheV2, pk)
                 if existing:
-                    existing.object_name = object_name
-                    existing.keywords = cache_keywords
                     existing.result_json = payload
                     existing.raw_text_hash = llm_data.get("raw_text_hash")
 
@@ -253,6 +250,7 @@ async def _write_cache_and_result(
         raw_text_hash=llm_data.get("raw_text_hash"),
         source_type=llm_data.get("source_type", "other"),
         analysis_status=analysis_status,
+        date_source=llm_data.get("date_source"),
     ))
     counters["processed"] += 1
     entry.update(
@@ -359,12 +357,10 @@ async def _execute_analysis(
             llm_data = None
             async with write_lock:
                 async with async_session() as session:
-                    cached = await session.get(UrlCache, url)
-                    if (
-                        cached
-                        and cached.object_name == object_name
-                        and cached.keywords == cache_keywords
-                    ):
+                    cached = await session.get(
+                        UrlCacheV2, (url, object_name, cache_keywords)
+                    )
+                    if cached:
                         llm_data = json.loads(cached.result_json) if cached.result_json else {}
                         llm_data.setdefault("analysis_status", "ok")
                         from_cache = True

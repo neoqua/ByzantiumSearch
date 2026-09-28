@@ -106,13 +106,18 @@ def test_csv_includes_mentions_and_status():
         keyword_percentage=100.0, percentage_of_visitors=None,
         fetch_failed_count=1, llm_failed_count=0,
         results=[
-            AnalysisResult(url="https://ok", mentions_object=True, analysis_status="ok"),
+            AnalysisResult(
+                url="https://ok", mentions_object=True, analysis_status="ok",
+                publication_date="15.03.2021", date_source="page",
+            ),
             AnalysisResult(url="https://bad", mentions_object=False, analysis_status="fetch_failed"),
         ],
     )
     csv_text = report_to_csv(report)
     assert csv_text.startswith("\ufeff")
     assert "Упоминает объект" in csv_text
+    assert "Источник даты" in csv_text
+    assert "со страницы" in csv_text
     assert "Статус" in csv_text
     assert "да" in csv_text
     assert "не скачано" in csv_text

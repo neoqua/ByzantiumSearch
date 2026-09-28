@@ -7,6 +7,7 @@ from pathlib import Path
 from fastapi import FastAPI, Request, Depends, BackgroundTasks
 from fastapi.responses import HTMLResponse, StreamingResponse, JSONResponse, Response
 from fastapi.templating import Jinja2Templates
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
@@ -44,10 +45,28 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="Cultural History Analyzer", lifespan=lifespan)
 
 
+TASK_STATUS_LABELS = {
+    "pending": "ожидание",
+    "queued": "в очереди",
+    "processing": "выполняется",
+    "completed": "готов",
+    "stopped": "остановлен",
+    "failed": "ошибка",
+}
+
+
 @app.get("/", response_class=HTMLResponse)
-async def index(request: Request):
+async def index(request: Request, db: AsyncSession = Depends(get_db)):
+    stmt = select(Task).order_by(Task.created_at.desc()).limit(30)
+    recent_tasks = (await db.execute(stmt)).scalars().all()
     return templates.TemplateResponse(
-        request, "index.html", {"default_search_engine": settings.default_search_engine}
+        request,
+        "index.html",
+        {
+            "default_search_engine": settings.default_search_engine,
+            "recent_tasks": recent_tasks,
+            "status_labels": TASK_STATUS_LABELS,
+        },
     )
 
 
