@@ -99,6 +99,7 @@ def test_coerce_result_source_type_missing_defaults():
 from app.schemas import LLMSettings
 from app.llm_providers import get_provider
 from app import llm
+from app.llm import analyze_text_with_retry
 
 
 def test_build_prompt_excludes_keyword_fields():
@@ -111,9 +112,19 @@ def test_analyze_text_accepts_llm_settings():
     async def run():
         provider = get_provider(LLMSettings(provider="local"))
         assert provider is not None
-        # analyze_text signature accepts the optional arg without error when not called over the wire
         import inspect
         sig = inspect.signature(llm.analyze_text)
         assert "llm_settings" in sig.parameters
     import asyncio
     asyncio.run(run())
+
+
+@pytest.mark.asyncio
+async def test_analyze_text_with_retry_marks_llm_failed(monkeypatch):
+    async def boom(*args, **kwargs):
+        raise RuntimeError("no llm")
+
+    monkeypatch.setattr(llm, "analyze_text", boom)
+    result = await analyze_text_with_retry("o", ["k"], "t", "text", max_retries=0)
+    assert result["analysis_status"] == "llm_failed"
+    assert result["mentions_object"] is False

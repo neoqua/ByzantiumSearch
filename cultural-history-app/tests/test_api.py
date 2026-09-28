@@ -189,3 +189,46 @@ def test_report_data_carries_search_engine():
         percentage_of_visitors=None, results=[], search_engine="openserp",
     )
     assert r.search_engine == "openserp"
+
+
+@pytest.mark.asyncio
+async def test_results_page_and_csv_include_mentions_and_status(api_client):
+    from app.database import async_session
+    from app.models import Task, Result
+
+    async with async_session() as s:
+        task = Task(
+            object_name="Obj", keywords="kw", search_engine="searxng",
+            search_engine_used="openserp", status="completed",
+        )
+        s.add(task)
+        await s.commit()
+        s.add(Result(
+            task_id=task.id, url="https://example.com/post", title="Запись",
+            mentions_object=True, has_keyword=True, keyword_found="византия",
+            source_type="blog", analysis_status="ok", relevance_score=0.8,
+        ))
+        s.add(Result(
+            task_id=task.id, url="https://example.com/down", title="",
+            mentions_object=False, has_keyword=False,
+            source_type="other", analysis_status="fetch_failed",
+        ))
+        await s.commit()
+        task_id = task.id
+
+    html = await api_client.get(f"/results/{task_id}")
+    assert html.status_code == 200
+    assert "Упоминает объект" in html.text
+    assert "определено моделью" in html.text
+    assert "searxng → openserp" in html.text
+    assert "не скачано" in html.text
+    assert "Упоминаний объекта" in html.text
+
+    csv_resp = await api_client.get(f"/results/{task_id}/csv")
+    assert csv_resp.status_code == 200
+    assert "text/csv" in csv_resp.headers["content-type"]
+    body = csv_resp.content.decode("utf-8-sig")
+    assert "Упоминает объект" in body
+    assert "Статус" in body
+    assert "да" in body
+    assert "не скачано" in body

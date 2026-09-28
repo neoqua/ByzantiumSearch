@@ -47,6 +47,11 @@ async def test_full_api_flow(setup_db):
         assert "event: done" in resp.text
         assert f"/results/{task_id}" in resp.text
 
+        _progress_store[task_id]["status"] = "failed"
+        resp = await client.get(f"/api/tasks/{task_id}/progress")
+        assert resp.status_code == 200
+        assert "event: done" in resp.text
+
         # Unknown task -> 404, not a hanging stream
         resp = await client.get("/api/tasks/does-not-exist/progress")
         assert resp.status_code == 404

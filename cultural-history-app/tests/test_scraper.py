@@ -11,6 +11,19 @@ def test_extract_text_removes_tags():
 
 def test_extract_text_empty():
     assert extract_text("") == ""
+    assert extract_text(b"") == ""
+
+
+def test_extract_text_cp1251_bytes():
+    body = "Византия на форуме".encode("cp1251")
+    html = (
+        b"<html><head><meta http-equiv=\"Content-Type\" "
+        b"content=\"text/html; charset=windows-1251\"></head>"
+        b"<body><p>" + body + b"</p></body></html>"
+    )
+    result = extract_text(html)
+    assert "Византия" in result
+    assert "форуме" in result
 
 
 def test_text_hash_consistent():

@@ -109,6 +109,16 @@ async def _search_openserp(object_name: str, keywords: List[str]) -> List[Dict[s
 async def search_urls(
     object_name: str, keywords: List[str], engine: str = "searxng"
 ) -> List[Dict[str, str]]:
+    results, _used, _fallback = await search_urls_detailed(
+        object_name, keywords, engine=engine
+    )
+    return results
+
+
+async def search_urls_detailed(
+    object_name: str, keywords: List[str], engine: str = "searxng"
+) -> tuple:
+    """Return (results, engine_used, fallback_from_searxng)."""
     if engine == "searxng":
         results = await _search_searxng(object_name, keywords)
         if not results:
@@ -116,7 +126,10 @@ async def search_urls(
                 "SearXNG returned 0 results, falling back to OpenSERP"
             )
             results = await _search_openserp(object_name, keywords)
-    else:
-        results = await _search_openserp(object_name, keywords)
+            results.sort(key=_sort_key)
+            return results, "openserp", True
+        results.sort(key=_sort_key)
+        return results, "searxng", False
+    results = await _search_openserp(object_name, keywords)
     results.sort(key=_sort_key)
-    return results
+    return results, "openserp", False

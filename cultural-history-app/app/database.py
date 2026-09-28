@@ -17,6 +17,9 @@ async def init_db():
         await conn.run_sync(Base.metadata.create_all)
         await conn.run_sync(_ensure_results_source_type)
         await conn.run_sync(_ensure_tasks_search_engine)
+        await conn.run_sync(_ensure_results_analysis_status)
+        await conn.run_sync(_ensure_tasks_error_message)
+        await conn.run_sync(_ensure_tasks_search_engine_used)
 
 
 def _ensure_column(sync_conn, table, column, ddl):
@@ -37,3 +40,18 @@ def _ensure_results_source_type(sync_conn):
 def _ensure_tasks_search_engine(sync_conn):
     _ensure_column(sync_conn, "tasks", "search_engine",
                    "ALTER TABLE tasks ADD COLUMN search_engine VARCHAR(10) DEFAULT 'searxng'")
+
+
+def _ensure_results_analysis_status(sync_conn):
+    _ensure_column(sync_conn, "results", "analysis_status",
+                   "ALTER TABLE results ADD COLUMN analysis_status VARCHAR(20) DEFAULT 'ok'")
+
+
+def _ensure_tasks_error_message(sync_conn):
+    _ensure_column(sync_conn, "tasks", "error_message",
+                   "ALTER TABLE tasks ADD COLUMN error_message TEXT")
+
+
+def _ensure_tasks_search_engine_used(sync_conn):
+    _ensure_column(sync_conn, "tasks", "search_engine_used",
+                   "ALTER TABLE tasks ADD COLUMN search_engine_used VARCHAR(20)")

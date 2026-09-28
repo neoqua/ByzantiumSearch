@@ -119,11 +119,13 @@ async def analyze_text_with_retry(
             result = await analyze_text(
                 object_name, keywords, title, text, llm_settings=llm_settings
             )
-            return _coerce_result(result)
+            coerced = _coerce_result(result)
+            coerced["analysis_status"] = "ok"
+            return coerced
         except Exception as e:
             logger.warning("LLM analysis attempt %d failed: %s", attempt + 1, e)
             if attempt == max_retries:
-                return _coerce_result({
+                failed = _coerce_result({
                     "mentions_object": False,
                     "has_keyword": False,
                     "keyword_found": None,
@@ -133,3 +135,6 @@ async def analyze_text_with_retry(
                     "relevance_score": 0.0,
                     "source_type": "other",
                 })
+                failed["analysis_status"] = "llm_failed"
+                return failed
+    return _coerce_result({})  # unreachable, keeps type checkers happy

@@ -1,6 +1,6 @@
 import hashlib
 import logging
-from typing import Optional
+from typing import Optional, Union
 import aiohttp
 from bs4 import BeautifulSoup
 from app.llm import analyze_text_with_retry
@@ -10,10 +10,17 @@ from app.schemas import LLMSettings
 logger = logging.getLogger(__name__)
 
 
-def extract_text(html: str) -> str:
-    if not html or not html.strip():
+def extract_text(html: Union[str, bytes, None]) -> str:
+    if html is None:
         return ""
-    soup = BeautifulSoup(html, "lxml")
+    if isinstance(html, bytes):
+        if not html.strip():
+            return ""
+        soup = BeautifulSoup(html, "lxml")
+    else:
+        if not html.strip():
+            return ""
+        soup = BeautifulSoup(html, "lxml")
     for tag in soup(["script", "style", "nav", "footer", "header"]):
         tag.decompose()
     text = soup.get_text(separator=" ", strip=True)
@@ -22,6 +29,23 @@ def extract_text(html: str) -> str:
 
 def text_hash(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def _blank_analysis(url: str, title: str, status: str) -> dict:
+    return {
+        "url": url,
+        "title": title,
+        "mentions_object": False,
+        "has_keyword": False,
+        "keyword_found": None,
+        "date_mentioned": None,
+        "publication_date": None,
+        "author_location": None,
+        "source_type": "other",
+        "relevance_score": 0.0,
+        "raw_text_hash": None,
+        "analysis_status": status,
+    }
 
 
 async def fetch_page_text(url: str) -> Optional[str]:
@@ -38,8 +62,8 @@ async def fetch_page_text(url: str) -> Optional[str]:
                 if resp.status != 200:
                     logger.warning("HTTP %d for %s", resp.status, url)
                     return None
-                html = await resp.text(encoding="utf-8", errors="replace")
-                return extract_text(html)
+                raw = await resp.read()
+                return extract_text(raw) or None
     except Exception as e:
         logger.warning("Failed to fetch %s: %s", url, e)
         return None
@@ -51,19 +75,7 @@ async def fetch_and_analyze(
 ) -> dict:
     text = await fetch_page_text(url)
     if not text:
-        return {
-            "url": url,
-            "title": title,
-            "mentions_object": False,
-            "has_keyword": False,
-            "keyword_found": None,
-            "date_mentioned": None,
-            "publication_date": None,
-            "author_location": None,
-            "source_type": "other",
-            "relevance_score": 0.0,
-            "raw_text_hash": None,
-        }
+        return _blank_analysis(url, title, "fetch_failed")
     h = text_hash(text)
     llm_result = await analyze_text_with_retry(
         object_name, keywords, title, text, llm_settings=llm_settings
@@ -75,4 +87,5 @@ async def fetch_and_analyze(
     matched_kw, matched_forms = match_keywords(text, keywords)
     llm_result["has_keyword"] = bool(matched_kw)
     llm_result["keyword_found"] = ", ".join(matched_forms) if matched_forms else None
+    llm_result.setdefault("analysis_status", "ok")
     return llm_result

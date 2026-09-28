@@ -114,6 +114,25 @@ async def test_searxng_empty_falls_back_to_openserp(httpx_mock):
 
 
 @pytest.mark.asyncio
+async def test_searxng_empty_fallback_reports_used_engine(httpx_mock):
+    from app.search import search_urls_detailed
+
+    def respond(request):
+        if request.url.port == httpx.URL(settings.searxng_base_url).port:
+            return httpx.Response(200, json={"results": []})
+        return httpx.Response(200, json={
+            "results": [{"url": "https://blog.ru/p", "title": "Отзыв"}],
+            "pagination": {"has_more": False},
+        })
+
+    httpx_mock.add_callback(respond, is_reusable=True)
+    results, used, fallback = await search_urls_detailed("Obj", [], engine="searxng")
+    assert fallback is True
+    assert used == "openserp"
+    assert [r["url"] for r in results] == ["https://blog.ru/p"]
+
+
+@pytest.mark.asyncio
 async def test_searxng_nonempty_does_not_fall_back(httpx_mock):
     ports = set()
 
