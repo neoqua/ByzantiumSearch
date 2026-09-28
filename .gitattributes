@@ -1,0 +1,8 @@
+# Normalize line endings to LF in the repository regardless of the OS used for editing
+* text=auto eol=lf
+
+# Binary files
+*.docx binary
+*.png binary
+*.jpg binary
+*.db binary

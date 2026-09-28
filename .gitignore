@@ -1,0 +1,3 @@
+# Jupyter notebooks and checkpoints (may contain API keys / experiments)
+*.ipynb
+.ipynb_checkpoints/
