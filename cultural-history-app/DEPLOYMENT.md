@@ -26,8 +26,9 @@
 ## 4. Запуск приложения (Docker-режим, основной)
 
 - [ ] Открыть терминал в `cultural-history-app/`
-- [ ] `docker compose up -d --build`
-- [ ] Дождаться готовности (первый запуск качает образы SearXNG и собирает приложение)
+- [ ] Запустить `scripts\start.cmd` (Windows, можно двойным кликом) или `scripts/start.sh` (Mac/Linux).
+  Эквивалент вручную: `docker compose up -d --build`
+- [ ] Дождаться готовности (первый запуск качает образы SearXNG и OpenSERP и собирает приложение; скрипт сам ждёт ответа сервисов и печатает адреса)
 - [ ] Открыть `http://localhost:8000` в браузере
 - [ ] Проверка: страница поиска загружается
 - [ ] Проверка: SearXNG отвечает на `http://localhost:8888`
@@ -42,8 +43,8 @@
 ## Полезные команды
 
 ```powershell
-# Остановить всё
-docker compose down
+# Остановить всё (данные в ./data сохраняются)
+scripts\stop.cmd        # или: docker compose down
 
 # Пересобрать после изменения Python-кода
 docker compose up -d --build

@@ -10,17 +10,37 @@ reports.
 - LM Studio running on the host, port 1234, model `meta-llama-3.1-8b-instruct`
   (set `LM_STUDIO_MODEL` if different)
 
+## Quick start / stop (scripts)
+
+`scripts/` contains start/stop wrappers for both platforms. They check that
+Docker is running, warn if LM Studio is not answering on :1234, start the
+containers, wait for health checks and print the URLs.
+
+| | Linux / macOS | Windows |
+|---|---|---|
+| Start (Docker mode) | `scripts/start.sh` | `scripts\start.cmd` or `.\scripts\start.ps1` |
+| Start without rebuilding the app image | `scripts/start.sh --no-build` | `scripts\start.cmd -NoBuild` |
+| Start in host mode (app via uvicorn, engines in Docker) | `scripts/start.sh --host` | `scripts\start.cmd -HostMode` |
+| Stop (keeps `./data`) | `scripts/stop.sh` | `scripts\stop.cmd` or `.\scripts\stop.ps1` |
+| Stop and drop the SearXNG volume | `scripts/stop.sh --volumes` | `scripts\stop.cmd -Volumes` |
+
+The `.cmd` wrappers run PowerShell with `-ExecutionPolicy Bypass`, so no policy
+change is needed; they can be double-clicked. In host mode the scripts create
+`./venv` and install requirements if no venv exists, then run uvicorn in the
+foreground (Ctrl+C stops the app, `stop` stops the containers). LM Studio is not
+managed by the scripts.
+
 ## Docker mode (recommended)
 
 1. Start LM Studio and load the model (`http://localhost:1234/v1/models` should respond).
 2. From `cultural-history-app/`:
 
-   `docker compose up -d --build`
+   `docker compose up -d --build`  (or `scripts/start.sh` / `scripts\start.cmd`)
 
 3. Open `http://localhost:8000` in a browser.
-4. SearXNG is also exposed at `http://localhost:8888` (optional).
+4. SearXNG is also exposed at `http://localhost:8888`, OpenSERP at `http://localhost:7000` (optional).
 
-Stopping: `docker compose down`. SQLite data persists in `./data/`.
+Stopping: `docker compose down` (or `scripts/stop.sh` / `scripts\stop.cmd`). SQLite data persists in `./data/`.
 
 Notes:
 - The app container reaches LM Studio on the host via `host.docker.internal:1234`.

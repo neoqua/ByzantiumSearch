@@ -1,6 +1,13 @@
 # Normalize line endings to LF in the repository regardless of the OS used for editing
 * text=auto eol=lf
 
+# Windows batch files must stay CRLF (cmd.exe misparses LF-only files in some cases)
+*.cmd text eol=crlf
+*.bat text eol=crlf
+
+# Shell scripts are executable
+*.sh text eol=lf
+
 # Binary files
 *.docx binary
 *.png binary

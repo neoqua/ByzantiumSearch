@@ -12,6 +12,7 @@ Cultural History Analysis App — a FastAPI web service that searches travel blo
   - `pytest.ini` — `asyncio_mode = strict`, function-scoped fixture loops
   - `venv/` — gitignored; the checked-out one is a Windows venv (`venv/Scripts/`), useless on Linux — create a fresh one (`python3 -m venv venv && venv/bin/pip install -r requirements.txt`)
   - `requirements.txt` — pinned deps; `Dockerfile`, `docker-compose.yml` (3 services); `DEPLOYMENT.md` (target-machine checklist, Russian)
+  - `scripts/` — `start.sh`/`stop.sh` (Linux/macOS), `start.ps1`/`stop.ps1` + `start.cmd`/`stop.cmd` wrappers (Windows). Docker mode by default, `--host`/`-HostMode` runs uvicorn from a venv. Health probes: app `/`, SearXNG `/`, OpenSERP `/health` (its `/` is 404). `stop` kills only the current user's `uvicorn app.main:app … --port 8000` — other projects on this machine run uvicorn with the same module name on other ports. Verified 2026-09-28: Docker-mode start/stop on Linux works end to end; PowerShell scripts not yet run on a Windows machine
   - `.env` — local dev config (gitignored); `.env.example` documents overrides
   - `data/` — gitignored, SQLite DB created at runtime
 - `Тревел блоги.docx` — travel blogs source data (Russian); not yet used by code
