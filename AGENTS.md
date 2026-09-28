@@ -33,7 +33,7 @@ Improvement plan (throughput, search quality) is tracked in chat history; stages
 ## How to work
 
 - `cd cultural-history-app`
-- **Tests run normally on Linux**: `venv/bin/python -m pytest -q` — 93 tests, ~1 s. The old "pytest hangs" note applies to the Windows dev machine only (see Known issues). Test modules set `DATABASE_URL` to a temp SQLite file before importing `app`
+- **Tests run normally on Linux**: `venv/bin/python -m pytest -q` — 97 tests, ~1 s. The old "pytest hangs" note applies to the Windows dev machine only (see Known issues). Test modules set `DATABASE_URL` to a temp SQLite file before importing `app`
 - Search tests use `pytest-httpx` with `add_callback(..., is_reusable=True)` (required since pytest-httpx 0.32; `requirements.txt` pins `>=0.32`). SearXNG and OpenSERP are both on `localhost` in tests — distinguish them by port, not host
 - Run app: `uvicorn app.main:app --reload` (needs SearXNG on :8888, OpenSERP on :7000, LM Studio on :1234 per `.env`)
 - Docker is installed on the dev machine (29.6.2), so e2e verification can run locally: `docker compose up -d --build`, then browse `http://localhost:8000`
