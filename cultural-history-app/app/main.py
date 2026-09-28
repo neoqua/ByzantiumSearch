@@ -151,7 +151,7 @@ async def task_progress(task_id: str, db: AsyncSession = Depends(get_db)):
                     f"data: {json.dumps({'task_id': task_id, 'redirect': f'/results/{task_id}'})}\n\n"
                 )
                 break
-            if status in ("processing", "pending"):
+            if status in ("processing", "pending", "queued"):
                 yield f"event: progress\ndata: {json.dumps(public_progress(progress))}\n\n"
                 await asyncio.sleep(1)
                 continue

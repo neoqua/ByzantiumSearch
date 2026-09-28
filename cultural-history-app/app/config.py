@@ -46,6 +46,15 @@ class Settings:
             os.getenv("DEFAULT_SEARCH_ENGINE", "openserp")
         )
     )
+    scraper_verify_ssl: bool = field(
+        default_factory=lambda: _read_bool(os.getenv("SCRAPER_VERIFY_SSL"), False)
+    )
+    llm_text_limit: int = field(
+        default_factory=lambda: max(1, int(os.getenv("LLM_TEXT_LIMIT", "3000")))
+    )
+    fetch_concurrency: int = field(
+        default_factory=lambda: max(1, int(os.getenv("FETCH_CONCURRENCY", "3")))
+    )
 
 
 SEARCH_ENGINES = ("searxng", "openserp")
@@ -54,6 +63,12 @@ SEARCH_ENGINES = ("searxng", "openserp")
 def _read_search_engine(value):
     value = (value or "").strip().lower()
     return value if value in SEARCH_ENGINES else "openserp"
+
+
+def _read_bool(value, default):
+    if value is None or value == "":
+        return default
+    return value.strip().lower() in ("1", "true", "yes", "on")
 
 
 settings = Settings()

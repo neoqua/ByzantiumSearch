@@ -9,6 +9,14 @@ def test_build_prompt_contains_object_and_keyword():
     assert "Byzantium" in prompt
 
 
+def test_build_prompt_truncates_text_to_configured_limit(monkeypatch):
+    from app.llm import settings as llm_settings
+    monkeypatch.setattr(llm_settings, "llm_text_limit", 8)
+    prompt = _build_prompt("O", ["k"], "T", "ABCDEFGHIJKLMNOP")
+    assert "Текст: ABCDEFGH\n" in prompt
+    assert "ABCDEFGHI" not in prompt
+
+
 def test_parse_response_json_object():
     data = {"mentions_object": True, "has_keyword": True, "relevance_score": 0.95}
     result = _parse_response(json.dumps(data))

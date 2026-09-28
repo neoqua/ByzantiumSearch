@@ -2,6 +2,7 @@ import json
 import logging
 from typing import Optional
 
+from app.config import settings
 from app.llm_providers import get_provider
 from app.schemas import LLMSettings
 
@@ -16,7 +17,7 @@ def _build_prompt(object_name: str, keywords: list[str], title: str, text: str) 
         f"Объект: {object_name}\n"
         f"Ключевые слова (для контекста релевантности): {keywords_str}\n\n"
         f"Заголовок: {title}\n\n"
-        f"Текст: {text[:3000]}\n\n"
+        f"Текст: {text[: settings.llm_text_limit]}\n\n"
         "Ответ ТОЛЬКО в формате JSON:\n"
         "{\n"
         '  "mentions_object": true/false,\n'

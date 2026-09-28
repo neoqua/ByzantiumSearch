@@ -1,6 +1,7 @@
 import os
 import tempfile
 import uuid
+import asyncio
 
 _test_db_path = os.path.join(tempfile.gettempdir(), f"test_analyzer_{uuid.uuid4().hex}.db")
 os.environ["DATABASE_URL"] = f"sqlite+aiosqlite:///{_test_db_path}"
@@ -46,7 +47,7 @@ async def test_search_error_with_manual_url_continues(monkeypatch):
     async def boom(*args, **kwargs):
         raise RuntimeError("engine down")
 
-    async def fake_fetch(url, object_name, keywords, title, llm_settings=None):
+    async def fake_fetch(url, object_name, keywords, title, llm_settings=None, client=None):
         return {
             "url": url,
             "title": title,
@@ -92,7 +93,7 @@ async def test_fetch_failed_not_cached(monkeypatch):
     async def one_url(*args, **kwargs):
         return [{"url": "https://down.example/x", "title": "X"}], "openserp", False
 
-    async def fail_fetch(url, object_name, keywords, title, llm_settings=None):
+    async def fail_fetch(url, object_name, keywords, title, llm_settings=None, client=None):
         return {
             "url": url,
             "title": title,
@@ -129,7 +130,7 @@ async def test_fetch_failed_not_cached(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_fetch_and_analyze_fetch_failed(monkeypatch):
-    async def no_text(url):
+    async def no_text(url, client=None):
         return None
 
     monkeypatch.setattr("app.scraper.fetch_page_text", no_text)
@@ -140,7 +141,7 @@ async def test_fetch_and_analyze_fetch_failed(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_fetch_and_analyze_llm_failed_still_matches_keywords(monkeypatch):
-    async def page(url):
+    async def page(url, client=None):
         return "Текст про Византию на странице"
 
     async def llm_fail(*args, **kwargs):
@@ -175,21 +176,24 @@ async def test_fail_interrupted_tasks_marks_pending_and_processing():
     async with async_session() as s:
         pending = Task(object_name="A", keywords="k", search_engine="openserp", status="pending")
         running = Task(object_name="B", keywords="k", search_engine="openserp", status="processing")
+        queued = Task(object_name="D", keywords="k", search_engine="openserp", status="queued")
         done = Task(object_name="C", keywords="k", search_engine="openserp", status="completed")
-        s.add_all([pending, running, done])
+        s.add_all([pending, running, queued, done])
         await s.commit()
-        ids = (pending.id, running.id, done.id)
+        ids = (pending.id, running.id, queued.id, done.id)
 
     from app.analyzer import fail_interrupted_tasks, get_progress
     n = await fail_interrupted_tasks()
-    assert n >= 2
+    assert n >= 3
 
     async with async_session() as s:
         a = await s.get(Task, ids[0])
         b = await s.get(Task, ids[1])
-        c = await s.get(Task, ids[2])
+        q = await s.get(Task, ids[2])
+        c = await s.get(Task, ids[3])
         assert a.status == "failed"
         assert b.status == "failed"
+        assert q.status == "failed"
         assert "перезапуском" in (a.error_message or "")
         assert c.status == "completed"
         assert get_progress(ids[0]) is None
@@ -202,7 +206,7 @@ async def test_progress_json_persisted_and_store_cleared(monkeypatch):
     async def one_url(*args, **kwargs):
         return [{"url": "https://ok.example/x", "title": "X"}], "openserp", False
 
-    async def ok_fetch(url, object_name, keywords, title, llm_settings=None):
+    async def ok_fetch(url, object_name, keywords, title, llm_settings=None, client=None):
         return {
             "url": url, "title": title, "mentions_object": True, "has_keyword": True,
             "keyword_found": "kw", "date_mentioned": None, "publication_date": None,
@@ -232,3 +236,105 @@ async def test_progress_json_persisted_and_store_cleared(monkeypatch):
         assert data["processed"] == 1
         assert data["total"] == 1
         assert data["status"] == "completed"
+
+
+@pytest.mark.asyncio
+async def test_second_analysis_is_queued_while_first_runs(monkeypatch):
+    await init_db()
+    gate = asyncio.Event()
+
+    async def blocking_search(*args, **kwargs):
+        await gate.wait()
+        return [], "openserp", False
+
+    monkeypatch.setattr("app.analyzer.search_urls_detailed", blocking_search)
+
+    async with async_session() as s:
+        t1 = Task(object_name="A", keywords="k", search_engine="openserp", status="pending")
+        t2 = Task(object_name="B", keywords="k", search_engine="openserp", status="pending")
+        s.add_all([t1, t2])
+        await s.commit()
+        id1, id2 = t1.id, t2.id
+
+    f1 = asyncio.create_task(run_analysis(id1, "A", "k", None, None, "openserp"))
+    for _ in range(50):
+        await asyncio.sleep(0.02)
+        async with async_session() as s:
+            first = await s.get(Task, id1)
+            if first.status == "processing":
+                break
+    else:
+        gate.set()
+        await f1
+        raise AssertionError("first analysis did not enter processing")
+
+    f2 = asyncio.create_task(run_analysis(id2, "B", "k", None, None, "openserp"))
+    for _ in range(50):
+        await asyncio.sleep(0.02)
+        async with async_session() as s:
+            second = await s.get(Task, id2)
+            if second.status == "queued":
+                break
+    else:
+        gate.set()
+        await asyncio.gather(f1, f2)
+        raise AssertionError("second analysis was not queued")
+
+    gate.set()
+    await f1
+    await f2
+
+    async with async_session() as s:
+        first = await s.get(Task, id1)
+        second = await s.get(Task, id2)
+        assert first.status == "failed"
+        assert second.status == "failed"
+
+
+@pytest.mark.asyncio
+async def test_url_fetch_concurrency_is_capped(monkeypatch):
+    await init_db()
+    current = 0
+    peak = 0
+    lock = asyncio.Lock()
+    prefix = f"https://ex.example/{uuid.uuid4().hex}/"
+
+    async def five_urls(*args, **kwargs):
+        return (
+            [{"url": f"{prefix}{i}", "title": str(i)} for i in range(5)],
+            "openserp",
+            False,
+        )
+
+    async def slow_fetch(url, object_name, keywords, title, llm_settings=None, client=None):
+        nonlocal current, peak
+        async with lock:
+            current += 1
+            peak = max(peak, current)
+        await asyncio.sleep(0.05)
+        async with lock:
+            current -= 1
+        return {
+            "url": url, "title": title, "mentions_object": False, "has_keyword": False,
+            "keyword_found": None, "date_mentioned": None, "publication_date": None,
+            "author_location": None, "source_type": "other", "relevance_score": 0.0,
+            "raw_text_hash": "h", "analysis_status": "ok",
+        }
+
+    from app.config import settings as app_settings
+    monkeypatch.setattr("app.analyzer.search_urls_detailed", five_urls)
+    monkeypatch.setattr("app.analyzer.fetch_and_analyze", slow_fetch)
+    monkeypatch.setattr(app_settings, "fetch_concurrency", 2)
+
+    async with async_session() as s:
+        task = Task(object_name="Obj", keywords="kw", search_engine="openserp", status="pending")
+        s.add(task)
+        await s.commit()
+        task_id = task.id
+
+    await run_analysis(task_id, "Obj", "kw", None, None, "openserp")
+    assert 1 <= peak <= 2
+    async with async_session() as s:
+        rows = (await s.execute(select(Result).where(Result.task_id == task_id))).scalars().all()
+        assert len(rows) == 5
+

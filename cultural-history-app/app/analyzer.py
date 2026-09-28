@@ -1,14 +1,17 @@
+import asyncio
 import json
 import logging
 from typing import Dict, Any, Optional
 
+import httpx
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
+from app.config import settings
 from app.database import async_session
 from app.models import Task, Result, UrlCache, utcnow
 from app.search import search_urls_detailed
-from app.scraper import fetch_and_analyze
+from app.scraper import fetch_and_analyze, make_http_client, _blank_analysis
 from app.schemas import LLMSettings
 
 logger = logging.getLogger(__name__)
@@ -16,6 +19,10 @@ logger = logging.getLogger(__name__)
 _PROGRESS_KEYS = (
     "status", "processed", "total", "found_keyword", "current_url", "current_title",
 )
+_ACTIVE_STATUSES = ("pending", "processing", "queued")
+
+# One analysis at a time in this process
+_analysis_slot = asyncio.Semaphore(1)
 
 # In-memory progress store: task_id -> dict (fast path while the process lives)
 _progress_store: Dict[str, Dict[str, Any]] = {}
@@ -85,10 +92,17 @@ def _dump_progress(entry: Dict[str, Any]) -> str:
     return json.dumps(public_progress(entry), ensure_ascii=False)
 
 
+def _wants_stop(task_id: str, entry: Dict[str, Any]) -> bool:
+    return bool(
+        entry.get("stop_requested")
+        or (_progress_store.get(task_id) or {}).get("stop_requested")
+    )
+
+
 async def fail_interrupted_tasks() -> int:
-    """Mark pending/processing tasks as failed — they cannot survive a process restart."""
+    """Mark unfinished tasks as failed — they cannot survive a process restart."""
     async with async_session() as session:
-        stmt = select(Task).where(Task.status.in_(("pending", "processing")))
+        stmt = select(Task).where(Task.status.in_(_ACTIVE_STATUSES))
         tasks = (await session.execute(stmt)).scalars().all()
         if not tasks:
             return 0
@@ -116,7 +130,7 @@ async def request_stop(task_id: str) -> bool:
         task = await session.get(Task, task_id)
         if task is None:
             return False
-        if task.status in ("pending", "processing"):
+        if task.status in _ACTIVE_STATUSES:
             task.stop_requested = True
             await session.commit()
             return True
@@ -152,18 +166,114 @@ async def _persist_engine_used(task_id: str, engine_used: str):
         logger.error("Failed to store search_engine_used for %s: %s", task_id, e)
 
 
-async def run_analysis(
+async def _mark_queued(task_id: str, entry: Dict[str, Any]) -> None:
+    entry["status"] = "queued"
+    async with async_session() as session:
+        task = await session.get(Task, task_id)
+        if task:
+            task.status = "queued"
+            task.progress_json = _dump_progress(entry)
+            await session.commit()
+
+
+async def _finalize_stopped(task_id: str, entry: Dict[str, Any]) -> None:
+    entry["status"] = "stopped"
+    async with async_session() as session:
+        task = await session.get(Task, task_id)
+        if task:
+            task.status = "stopped"
+            task.completed_at = utcnow()
+            task.progress_json = _dump_progress(entry)
+            await session.commit()
+    forget_progress(task_id)
+
+
+async def _write_cache_and_result(
+    session,
+    task: Optional[Task],
+    task_id: str,
+    url: str,
+    title: str,
+    object_name: str,
+    cache_keywords: str,
+    llm_data: dict,
+    entry: Dict[str, Any],
+    counters: Dict[str, int],
+    write_cache: bool,
+) -> None:
+    analysis_status = llm_data.get("analysis_status") or "ok"
+    if write_cache and analysis_status == "ok":
+        payload = json.dumps(llm_data, ensure_ascii=False)
+        cached = await session.get(UrlCache, url)
+        if cached:
+            cached.object_name = object_name
+            cached.keywords = cache_keywords
+            cached.result_json = payload
+            cached.raw_text_hash = llm_data.get("raw_text_hash")
+        else:
+            session.add(UrlCache(
+                url=url,
+                object_name=object_name,
+                keywords=cache_keywords,
+                result_json=payload,
+                raw_text_hash=llm_data.get("raw_text_hash"),
+            ))
+            try:
+                await session.flush()
+            except IntegrityError:
+                await session.rollback()
+                task = await session.get(Task, task_id)
+                existing = await session.get(UrlCache, url)
+                if existing:
+                    existing.object_name = object_name
+                    existing.keywords = cache_keywords
+                    existing.result_json = payload
+                    existing.raw_text_hash = llm_data.get("raw_text_hash")
+
+    mentions = llm_data.get("mentions_object", False)
+    has_kw = llm_data.get("has_keyword", False)
+    if has_kw and analysis_status == "ok":
+        counters["found_keyword"] += 1
+
+    session.add(Result(
+        task_id=task_id,
+        url=url,
+        title=title,
+        mentions_object=mentions if analysis_status == "ok" else False,
+        has_keyword=has_kw if analysis_status != "fetch_failed" else False,
+        keyword_found=llm_data.get("keyword_found"),
+        date_mentioned=llm_data.get("date_mentioned"),
+        publication_date=llm_data.get("publication_date"),
+        author_location=llm_data.get("author_location"),
+        relevance_score=llm_data.get("relevance_score", 0.0),
+        raw_text_hash=llm_data.get("raw_text_hash"),
+        source_type=llm_data.get("source_type", "other"),
+        analysis_status=analysis_status,
+    ))
+    counters["processed"] += 1
+    entry.update(
+        processed=counters["processed"],
+        found_keyword=counters["found_keyword"],
+        current_url=url,
+        current_title=title,
+    )
+    if task:
+        task.progress_json = _dump_progress(entry)
+    await session.commit()
+
+
+async def _execute_analysis(
     task_id: str,
     object_name: str,
     keywords_raw: str,
-    manual_urls_raw: Optional[str] = None,
-    llm_settings: Optional[LLMSettings] = None,
-    search_engine: str = "searxng",
+    manual_urls_raw: Optional[str],
+    llm_settings: Optional[LLMSettings],
+    search_engine: str,
+    entry: Dict[str, Any],
 ):
     keywords = _split_keywords(keywords_raw)
     manual_urls = _split_urls(manual_urls_raw)
 
-    entry = _progress_store.get(task_id) or seed_progress(task_id)
     entry.update(
         status="processing",
         processed=0,
@@ -173,170 +283,170 @@ async def run_analysis(
         current_title=None,
     )
 
+    async with async_session() as session:
+        task = await session.get(Task, task_id)
+        if not task:
+            forget_progress(task_id)
+            return
+        task.status = "processing"
+        task.error_message = None
+        task.stop_requested = False
+        task.progress_json = _dump_progress(entry)
+        await session.commit()
+
+    all_urls = []
+    engine_used = search_engine
+    search_error = None
     try:
-        async with async_session() as session:
-            task = await session.get(Task, task_id)
-            if not task:
-                forget_progress(task_id)
+        search_results, engine_used, _fallback = await search_urls_detailed(
+            object_name, keywords, engine=search_engine
+        )
+        all_urls.extend(search_results)
+    except Exception as e:
+        logger.error("Search failed: %s", e)
+        search_error = str(e)
+
+    await _persist_engine_used(task_id, engine_used)
+
+    for url in manual_urls:
+        if not any(item["url"] == url for item in all_urls):
+            all_urls.append({"url": url, "title": ""})
+
+    if not all_urls:
+        if search_error:
+            msg = (
+                f"Поиск недоступен ({search_error}). "
+                "Ручных ссылок нет."
+            )
+        else:
+            msg = (
+                "Поиск не вернул ни одного URL, и список ручных ссылок пуст."
+            )
+        if task_id in _progress_store:
+            _progress_store[task_id]["status"] = "failed"
+        await _mark_task_failed(task_id, msg)
+        return
+
+    entry["total"] = len(all_urls)
+    cache_keywords = _cache_keywords(keywords)
+    counters = {"processed": 0, "found_keyword": 0}
+    write_lock = asyncio.Lock()
+    fetch_sem = asyncio.Semaphore(settings.fetch_concurrency)
+
+    async def handle(item: dict, client: httpx.AsyncClient) -> None:
+        url = item["url"]
+        title = item["title"]
+        try:
+            if _wants_stop(task_id, entry):
                 return
-            task.status = "processing"
-            task.error_message = None
-            task.stop_requested = False
+            from_cache = False
+            llm_data = None
+            async with write_lock:
+                async with async_session() as session:
+                    cached = await session.get(UrlCache, url)
+                    if (
+                        cached
+                        and cached.object_name == object_name
+                        and cached.keywords == cache_keywords
+                    ):
+                        llm_data = json.loads(cached.result_json) if cached.result_json else {}
+                        llm_data.setdefault("analysis_status", "ok")
+                        from_cache = True
+                        task = await session.get(Task, task_id)
+                        await _write_cache_and_result(
+                            session, task, task_id, url, title, object_name,
+                            cache_keywords, llm_data, entry, counters,
+                            write_cache=False,
+                        )
+            if from_cache:
+                return
+            if _wants_stop(task_id, entry):
+                return
+            async with fetch_sem:
+                if _wants_stop(task_id, entry):
+                    return
+                entry.update(current_url=url, current_title=title)
+                llm_data = await fetch_and_analyze(
+                    url, object_name, keywords, title,
+                    llm_settings=llm_settings, client=client,
+                )
+            async with write_lock:
+                async with async_session() as session:
+                    task = await session.get(Task, task_id)
+                    await _write_cache_and_result(
+                        session, task, task_id, url, title, object_name,
+                        cache_keywords, llm_data, entry, counters,
+                        write_cache=True,
+                    )
+        except Exception:
+            logger.exception("Failed processing %s", url)
+            async with write_lock:
+                async with async_session() as session:
+                    task = await session.get(Task, task_id)
+                    await _write_cache_and_result(
+                        session, task, task_id, url, title, object_name,
+                        cache_keywords, _blank_analysis(url, title, "fetch_failed"),
+                        entry, counters, write_cache=False,
+                    )
+
+    client = make_http_client()
+    try:
+        await asyncio.gather(
+            *[handle(item, client) for item in all_urls],
+            return_exceptions=True,
+        )
+    finally:
+        await client.aclose()
+
+    stopped = _wants_stop(task_id, entry)
+    async with async_session() as session:
+        task = await session.get(Task, task_id)
+        if task and task.stop_requested:
+            stopped = True
+        final_status = "stopped" if stopped else "completed"
+        if task:
+            task.status = final_status
+            task.completed_at = utcnow()
+            entry["status"] = final_status
             task.progress_json = _dump_progress(entry)
             await session.commit()
+    forget_progress(task_id)
 
-        all_urls = []
-        engine_used = search_engine
-        search_error = None
-        try:
-            search_results, engine_used, _fallback = await search_urls_detailed(
-                object_name, keywords, engine=search_engine
-            )
-            all_urls.extend(search_results)
-        except Exception as e:
-            logger.error("Search failed: %s", e)
-            search_error = str(e)
 
-        await _persist_engine_used(task_id, engine_used)
+async def run_analysis(
+    task_id: str,
+    object_name: str,
+    keywords_raw: str,
+    manual_urls_raw: Optional[str] = None,
+    llm_settings: Optional[LLMSettings] = None,
+    search_engine: str = "searxng",
+):
+    entry = _progress_store.get(task_id) or seed_progress(task_id)
+    acquired = False
+    try:
+        if _analysis_slot.locked():
+            await _mark_queued(task_id, entry)
+        await _analysis_slot.acquire()
+        acquired = True
 
-        for url in manual_urls:
-            if not any(item["url"] == url for item in all_urls):
-                all_urls.append({"url": url, "title": ""})
-
-        if not all_urls:
-            if search_error:
-                msg = (
-                    f"Поиск недоступен ({search_error}). "
-                    "Ручных ссылок нет."
-                )
-            else:
-                msg = (
-                    "Поиск не вернул ни одного URL, и список ручных ссылок пуст."
-                )
-            if task_id in _progress_store:
-                _progress_store[task_id]["status"] = "failed"
-            await _mark_task_failed(task_id, msg)
+        if _wants_stop(task_id, entry):
+            await _finalize_stopped(task_id, entry)
             return
-
-        total = len(all_urls)
-        entry["total"] = total
-
-        processed = 0
-        found_keyword = 0
-        cache_keywords = _cache_keywords(keywords)
-        stopped = False
-
         async with async_session() as session:
             task = await session.get(Task, task_id)
-            for item in all_urls:
-                if task:
-                    await session.refresh(task)
-                if (
-                    (task and task.stop_requested)
-                    or entry.get("stop_requested")
-                    or _progress_store.get(task_id, {}).get("stop_requested")
-                ):
-                    stopped = True
-                    break
+            if task and task.stop_requested:
+                await _finalize_stopped(task_id, entry)
+                return
 
-                url = item["url"]
-                title = item["title"]
-
-                entry.update(current_url=url, current_title=title)
-
-                cached = await session.get(UrlCache, url)
-                if (
-                    cached
-                    and cached.object_name == object_name
-                    and cached.keywords == cache_keywords
-                ):
-                    llm_data = json.loads(cached.result_json) if cached.result_json else {}
-                    llm_data.setdefault("analysis_status", "ok")
-                else:
-                    llm_data = await fetch_and_analyze(
-                        url, object_name, keywords, title, llm_settings=llm_settings
-                    )
-                    status = llm_data.get("analysis_status") or "ok"
-                    if status == "ok":
-                        payload = json.dumps(llm_data, ensure_ascii=False)
-                        if cached:
-                            cached.object_name = object_name
-                            cached.keywords = cache_keywords
-                            cached.result_json = payload
-                            cached.raw_text_hash = llm_data.get("raw_text_hash")
-                            await session.commit()
-                        else:
-                            cache_entry = UrlCache(
-                                url=url,
-                                object_name=object_name,
-                                keywords=cache_keywords,
-                                result_json=payload,
-                                raw_text_hash=llm_data.get("raw_text_hash"),
-                            )
-                            session.add(cache_entry)
-                            try:
-                                await session.commit()
-                            except IntegrityError:
-                                await session.rollback()
-                                task = await session.get(Task, task_id)
-                                existing = await session.get(UrlCache, url)
-                                if existing and existing.keywords == cache_keywords:
-                                    llm_data = (
-                                        json.loads(existing.result_json)
-                                        if existing.result_json
-                                        else llm_data
-                                    )
-                                    llm_data.setdefault("analysis_status", "ok")
-                                elif existing:
-                                    existing.object_name = object_name
-                                    existing.keywords = cache_keywords
-                                    existing.result_json = payload
-                                    existing.raw_text_hash = llm_data.get("raw_text_hash")
-                                    await session.commit()
-
-                mentions = llm_data.get("mentions_object", False)
-                has_kw = llm_data.get("has_keyword", False)
-                analysis_status = llm_data.get("analysis_status") or "ok"
-
-                if has_kw and analysis_status == "ok":
-                    found_keyword += 1
-
-                result_entry = Result(
-                    task_id=task_id,
-                    url=url,
-                    title=title,
-                    mentions_object=mentions if analysis_status == "ok" else False,
-                    has_keyword=has_kw if analysis_status != "fetch_failed" else False,
-                    keyword_found=llm_data.get("keyword_found"),
-                    date_mentioned=llm_data.get("date_mentioned"),
-                    publication_date=llm_data.get("publication_date"),
-                    author_location=llm_data.get("author_location"),
-                    relevance_score=llm_data.get("relevance_score", 0.0),
-                    raw_text_hash=llm_data.get("raw_text_hash"),
-                    source_type=llm_data.get("source_type", "other"),
-                    analysis_status=analysis_status,
-                )
-                session.add(result_entry)
-
-                processed += 1
-                entry.update(processed=processed, found_keyword=found_keyword)
-                if task:
-                    task.progress_json = _dump_progress(entry)
-                await session.commit()
-
-            final_status = "stopped" if stopped else "completed"
-            if task:
-                task.status = final_status
-                task.completed_at = utcnow()
-                entry["status"] = final_status
-                task.progress_json = _dump_progress(entry)
-                await session.commit()
-
-        if task_id in _progress_store:
-            _progress_store[task_id]["status"] = "stopped" if stopped else "completed"
-        forget_progress(task_id)
+        await _execute_analysis(
+            task_id, object_name, keywords_raw, manual_urls_raw,
+            llm_settings, search_engine, entry,
+        )
     except Exception as e:
         logger.exception("Analysis failed for task %s: %s", task_id, e)
         if task_id in _progress_store:
             _progress_store[task_id]["status"] = "failed"
         await _mark_task_failed(task_id, str(e))
+    finally:
+        if acquired:
+            _analysis_slot.release()

@@ -42,3 +42,6 @@ def test_config_search_defaults():
     assert settings.search_max_pages == 3
     assert settings.openserp_results_limit == 30
     assert settings.default_search_engine == "openserp"
+    assert settings.scraper_verify_ssl is False
+    assert settings.llm_text_limit == 3000
+    assert settings.fetch_concurrency == 3

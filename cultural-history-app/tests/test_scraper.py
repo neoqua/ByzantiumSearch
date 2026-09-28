@@ -1,5 +1,5 @@
 import pytest
-from app.scraper import extract_text, text_hash
+from app.scraper import extract_text, text_hash, fetch_page_text
 
 
 def test_extract_text_removes_tags():
@@ -36,3 +36,12 @@ def test_text_hash_different():
     h1 = text_hash("text a")
     h2 = text_hash("text b")
     assert h1 != h2
+
+
+@pytest.mark.asyncio
+async def test_fetch_page_text_via_httpx(httpx_mock):
+    html = b"<html><body><p>Hello world</p><script>x</script></body></html>"
+    httpx_mock.add_response(url="https://example.com/page", content=html)
+    text = await fetch_page_text("https://example.com/page")
+    assert "Hello world" in text
+    assert "x" not in text

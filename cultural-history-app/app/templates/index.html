@@ -202,6 +202,13 @@ document.getElementById('search-form').onsubmit = async function(e) {
     let retriedSse = false;
 
     function applyProgress(data) {
+        if (data.status === 'queued') {
+            document.getElementById('progress-fill').style.width = '0%';
+            document.getElementById('progress-status').textContent =
+                'В очереди: ожидается завершение другого анализа';
+            document.getElementById('progress-text').textContent = '';
+            return;
+        }
         const pct = data.total > 0 ? Math.round(data.processed / data.total * 100) : 0;
         document.getElementById('progress-fill').style.width = pct + '%';
         document.getElementById('progress-status').innerHTML =
@@ -236,7 +243,7 @@ document.getElementById('search-form').onsubmit = async function(e) {
                     goToResults(body.redirect);
                     return;
                 }
-                if (!retriedSse && (body.status === 'processing' || body.status === 'pending')) {
+                if (!retriedSse && (body.status === 'processing' || body.status === 'pending' || body.status === 'queued')) {
                     retriedSse = true;
                     applyProgress(body);
                     openProgressStream();

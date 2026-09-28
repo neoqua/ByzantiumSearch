@@ -1,13 +1,20 @@
 import hashlib
 import logging
 from typing import Optional, Union
-import aiohttp
+import httpx
 from bs4 import BeautifulSoup
+from app.config import settings
 from app.llm import analyze_text_with_retry
 from app.keyword_match import match_keywords
 from app.schemas import LLMSettings
 
 logger = logging.getLogger(__name__)
+
+_HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+    "AppleWebKit/537.36 (KHTML, like Gecko) "
+    "Chrome/120.0.0.0 Safari/537.36"
+}
 
 
 def extract_text(html: Union[str, bytes, None]) -> str:
@@ -48,32 +55,41 @@ def _blank_analysis(url: str, title: str, status: str) -> dict:
     }
 
 
-async def fetch_page_text(url: str) -> Optional[str]:
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-        "AppleWebKit/537.36 (KHTML, like Gecko) "
-        "Chrome/120.0.0.0 Safari/537.36"
-    }
+def make_http_client() -> httpx.AsyncClient:
+    return httpx.AsyncClient(
+        timeout=30.0,
+        verify=settings.scraper_verify_ssl,
+        follow_redirects=True,
+        headers=_HEADERS,
+    )
+
+
+async def fetch_page_text(
+    url: str, client: Optional[httpx.AsyncClient] = None
+) -> Optional[str]:
+    own = client is None
+    if own:
+        client = make_http_client()
     try:
-        async with aiohttp.ClientSession(
-            timeout=aiohttp.ClientTimeout(total=30)
-        ) as session:
-            async with session.get(url, headers=headers, ssl=False) as resp:
-                if resp.status != 200:
-                    logger.warning("HTTP %d for %s", resp.status, url)
-                    return None
-                raw = await resp.read()
-                return extract_text(raw) or None
+        resp = await client.get(url)
+        if resp.status_code != 200:
+            logger.warning("HTTP %d for %s", resp.status_code, url)
+            return None
+        return extract_text(resp.content) or None
     except Exception as e:
         logger.warning("Failed to fetch %s: %s", url, e)
         return None
+    finally:
+        if own:
+            await client.aclose()
 
 
 async def fetch_and_analyze(
     url: str, object_name: str, keywords: list[str], title: str,
     llm_settings: Optional[LLMSettings] = None,
+    client: Optional[httpx.AsyncClient] = None,
 ) -> dict:
-    text = await fetch_page_text(url)
+    text = await fetch_page_text(url, client=client)
     if not text:
         return _blank_analysis(url, title, "fetch_failed")
     h = text_hash(text)

@@ -34,6 +34,9 @@ services:
       - DEFAULT_SEARCH_ENGINE=openserp
       - OPENSERP_RESULTS_LIMIT=15
       - DATABASE_URL=sqlite+aiosqlite:///./data/app.db
+      - SCRAPER_VERIFY_SSL=false
+      - LLM_TEXT_LIMIT=3000
+      - FETCH_CONCURRENCY=3
     volumes:
       - ./data:/app/data
     depends_on:
