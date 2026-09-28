@@ -38,6 +38,10 @@ services:
       - SCRAPER_VERIFY_SSL=false
       - LLM_TEXT_LIMIT=3000
       - FETCH_CONCURRENCY=3
+      - YANDEX_FOLDER_ID=${YANDEX_FOLDER_ID:-}
+      - YANDEX_API_KEY=${YANDEX_API_KEY:-}
+      - YANDEX_ENDPOINT=${YANDEX_ENDPOINT:-https://ai.api.cloud.yandex.net/v1}
+      - YANDEX_MODEL=${YANDEX_MODEL:-qwen3-235b-a22b-fp8}
     volumes:
       - ./data:/app/data
     depends_on:

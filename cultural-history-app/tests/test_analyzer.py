@@ -452,3 +452,58 @@ async def test_cache_not_shared_across_objects(monkeypatch):
         assert a.result_json != "" or b.result_json != ""
 
 
+@pytest.mark.asyncio
+async def test_search_phase_is_written_to_progress(monkeypatch):
+    import json as json_mod
+    await init_db()
+    captured = {}
+
+    async def search_with_progress(*args, **kwargs):
+        cb = kwargs.get("on_progress")
+        assert cb is not None
+        await cb({
+            "engine": "openserp",
+            "query": "Obj отзывы",
+            "index": 2,
+            "total": 7,
+            "urls_found": 4,
+        })
+        from app.analyzer import get_progress
+        captured["live"] = dict(get_progress(task_id) or {})
+        async with async_session() as s:
+            row = await s.get(Task, task_id)
+            captured["db"] = json_mod.loads(row.progress_json)
+        return (
+            [{"url": "https://ok.example/x", "title": "X", "source_type": "ugc", "travel_blog": False}],
+            "openserp",
+            False,
+        )
+
+    async def fake_fetch(url, object_name, keywords, title, llm_settings=None, client=None):
+        return {
+            "url": url, "title": title, "mentions_object": True, "has_keyword": True,
+            "keyword_found": "kw", "date_mentioned": None, "publication_date": None,
+            "author_location": None, "source_type": "blog", "relevance_score": 0.9,
+            "raw_text_hash": "h", "analysis_status": "ok", "date_source": None,
+        }
+
+    monkeypatch.setattr("app.analyzer.search_urls_detailed", search_with_progress)
+    monkeypatch.setattr("app.analyzer.fetch_and_analyze", fake_fetch)
+
+    async with async_session() as s:
+        task = Task(object_name="Obj", keywords="kw", search_engine="openserp", status="pending")
+        s.add(task)
+        await s.commit()
+        task_id = task.id
+
+    await run_analysis(task_id, "Obj", "kw", None, None, "openserp")
+
+    assert captured["live"]["phase"] == "search"
+    assert captured["live"]["search_query"] == "Obj отзывы"
+    assert captured["live"]["search_query_index"] == 2
+    assert captured["live"]["search_query_total"] == 7
+    assert captured["live"]["urls_found"] == 4
+    assert captured["db"]["phase"] == "search"
+    assert captured["db"]["search_backend"] == "openserp"
+
+

@@ -168,3 +168,31 @@ async def test_searxng_nonempty_does_not_fall_back(httpx_mock):
     httpx_mock.add_callback(respond, is_reusable=True)
     await search_urls("Obj", [], engine="searxng")
     assert ports == {httpx.URL(settings.searxng_base_url).port}
+
+
+@pytest.mark.asyncio
+async def test_openserp_reports_search_progress(httpx_mock):
+    from app.source_type import UGC_QUERY_MARKERS
+
+    events = []
+
+    async def on_progress(info):
+        events.append(dict(info))
+
+    def respond(request):
+        return httpx.Response(200, json={
+            "results": [{"url": f"https://blog.ru/{request.url.params['text']}", "title": "t"}],
+            "pagination": {"has_more": False},
+        })
+
+    httpx_mock.add_callback(respond, is_reusable=True)
+    settings.search_max_pages = 1
+    await search_urls("Obj", [], engine="openserp", on_progress=on_progress)
+    n_queries = 1 + len(UGC_QUERY_MARKERS)
+    assert events
+    assert events[0]["engine"] == "openserp"
+    assert events[0]["index"] == 1
+    assert events[0]["total"] == n_queries
+    assert events[-1]["urls_found"] >= 1
+    assert any(e["query"] == "Obj" for e in events)
+    assert any(e["query"] == "Obj отзывы" for e in events)

@@ -55,6 +55,22 @@ class Settings:
     fetch_concurrency: int = field(
         default_factory=lambda: max(1, int(os.getenv("FETCH_CONCURRENCY", "3")))
     )
+    yandex_api_key: str = field(
+        default_factory=lambda: (os.getenv("YANDEX_API_KEY") or "").strip()
+    )
+    yandex_folder_id: str = field(
+        default_factory=lambda: (os.getenv("YANDEX_FOLDER_ID") or "").strip()
+    )
+    yandex_endpoint: str = field(
+        default_factory=lambda: (
+            os.getenv("YANDEX_ENDPOINT") or "https://ai.api.cloud.yandex.net/v1"
+        ).strip()
+    )
+    yandex_model: str = field(
+        default_factory=lambda: (
+            os.getenv("YANDEX_MODEL") or "qwen3-235b-a22b-fp8"
+        ).strip()
+    )
 
 
 SEARCH_ENGINES = ("searxng", "openserp")

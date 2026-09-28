@@ -1,6 +1,6 @@
 import asyncio
 import logging
-from typing import List, Dict, Any
+from typing import Any, Awaitable, Callable, Dict, List, Optional
 import httpx
 from app.config import settings
 from app.source_type import (
@@ -8,6 +8,18 @@ from app.source_type import (
 )
 
 logger = logging.getLogger(__name__)
+
+OnSearchProgress = Optional[Callable[[Dict[str, Any]], Awaitable[None]]]
+
+
+async def _notify_search_progress(
+    on_progress: OnSearchProgress, payload: Dict[str, Any]
+) -> None:
+    if on_progress is None:
+        return
+    result = on_progress(payload)
+    if asyncio.iscoroutine(result):
+        await result
 
 
 def build_queries(object_name: str, keywords: List[str]) -> List[str]:
@@ -36,14 +48,26 @@ def _extract(item: Dict) -> Dict[str, Any]:
     }
 
 
-async def _search_searxng(object_name: str, keywords: List[str]) -> List[Dict[str, str]]:
+async def _search_searxng(
+    object_name: str,
+    keywords: List[str],
+    on_progress: OnSearchProgress = None,
+) -> List[Dict[str, str]]:
     queries = build_queries(object_name, keywords)
     seen_urls: set = set()
     results: List[Dict[str, str]] = []
+    n_queries = len(queries)
 
     delay = settings.search_delay_between_queries
     async with httpx.AsyncClient(timeout=30.0) as client:
         for i, query in enumerate(queries):
+            await _notify_search_progress(on_progress, {
+                "engine": "searxng",
+                "query": query,
+                "index": i + 1,
+                "total": n_queries,
+                "urls_found": len(results),
+            })
             if i > 0:
                 await asyncio.sleep(delay)
             try:
@@ -65,15 +89,27 @@ async def _search_searxng(object_name: str, keywords: List[str]) -> List[Dict[st
                         if url and url not in seen_urls:
                             seen_urls.add(url)
                             results.append(_extract(item))
+                    await _notify_search_progress(on_progress, {
+                        "engine": "searxng",
+                        "query": query,
+                        "index": i + 1,
+                        "total": n_queries,
+                        "urls_found": len(results),
+                    })
             except Exception as e:
                 logger.warning("Search query '%s' failed: %s", query, e)
     return results
 
 
-async def _search_openserp(object_name: str, keywords: List[str]) -> List[Dict[str, str]]:
+async def _search_openserp(
+    object_name: str,
+    keywords: List[str],
+    on_progress: OnSearchProgress = None,
+) -> List[Dict[str, str]]:
     queries = build_queries(object_name, keywords)
     seen_urls: set = set()
     results: List[Dict[str, str]] = []
+    n_queries = len(queries)
     engines = settings.openserp_engines
     mode = settings.openserp_mode
     limit = settings.openserp_results_limit
@@ -81,6 +117,13 @@ async def _search_openserp(object_name: str, keywords: List[str]) -> List[Dict[s
     delay = settings.search_delay_between_queries
     async with httpx.AsyncClient(timeout=30.0) as client:
         for i, query in enumerate(queries):
+            await _notify_search_progress(on_progress, {
+                "engine": "openserp",
+                "query": query,
+                "index": i + 1,
+                "total": n_queries,
+                "urls_found": len(results),
+            })
             if i > 0:
                 await asyncio.sleep(delay)
             try:
@@ -103,6 +146,13 @@ async def _search_openserp(object_name: str, keywords: List[str]) -> List[Dict[s
                         if url and url not in seen_urls:
                             seen_urls.add(url)
                             results.append(_extract(item))
+                    await _notify_search_progress(on_progress, {
+                        "engine": "openserp",
+                        "query": query,
+                        "index": i + 1,
+                        "total": n_queries,
+                        "urls_found": len(results),
+                    })
                     pagination = data.get("pagination") or {}
                     if not pagination.get("has_more"):
                         break
@@ -113,29 +163,48 @@ async def _search_openserp(object_name: str, keywords: List[str]) -> List[Dict[s
 
 
 async def search_urls(
-    object_name: str, keywords: List[str], engine: str = "searxng"
+    object_name: str,
+    keywords: List[str],
+    engine: str = "searxng",
+    on_progress: OnSearchProgress = None,
 ) -> List[Dict[str, str]]:
     results, _used, _fallback = await search_urls_detailed(
-        object_name, keywords, engine=engine
+        object_name, keywords, engine=engine, on_progress=on_progress
     )
     return results
 
 
 async def search_urls_detailed(
-    object_name: str, keywords: List[str], engine: str = "searxng"
+    object_name: str,
+    keywords: List[str],
+    engine: str = "searxng",
+    on_progress: OnSearchProgress = None,
 ) -> tuple:
     """Return (results, engine_used, fallback_from_searxng)."""
     if engine == "searxng":
-        results = await _search_searxng(object_name, keywords)
+        results = await _search_searxng(
+            object_name, keywords, on_progress=on_progress
+        )
         if not results:
             logger.warning(
                 "SearXNG returned 0 results, falling back to OpenSERP"
             )
-            results = await _search_openserp(object_name, keywords)
+            await _notify_search_progress(on_progress, {
+                "engine": "openserp",
+                "query": "SearXNG пуст, переход на OpenSERP",
+                "index": 0,
+                "total": len(build_queries(object_name, keywords)),
+                "urls_found": 0,
+            })
+            results = await _search_openserp(
+                object_name, keywords, on_progress=on_progress
+            )
             results.sort(key=_sort_key)
             return results, "openserp", True
         results.sort(key=_sort_key)
         return results, "searxng", False
-    results = await _search_openserp(object_name, keywords)
+    results = await _search_openserp(
+        object_name, keywords, on_progress=on_progress
+    )
     results.sort(key=_sort_key)
     return results, "openserp", False

@@ -20,6 +20,8 @@ logger = logging.getLogger(__name__)
 _PROGRESS_KEYS = (
     "status", "processed", "total", "found_keyword", "current_url", "current_title",
     "source_mix",
+    "phase", "search_query", "search_query_index", "search_query_total",
+    "search_backend", "urls_found",
 )
 _ACTIVE_STATUSES = ("pending", "processing", "queued")
 
@@ -69,6 +71,12 @@ def progress_from_task(task: Task) -> Dict[str, Any]:
         "current_url": data.get("current_url"),
         "current_title": data.get("current_title"),
         "source_mix": data.get("source_mix"),
+        "phase": data.get("phase"),
+        "search_query": data.get("search_query"),
+        "search_query_index": data.get("search_query_index") or 0,
+        "search_query_total": data.get("search_query_total") or 0,
+        "search_backend": data.get("search_backend"),
+        "urls_found": data.get("urls_found") or 0,
         "error_message": task.error_message,
     }
     return out
@@ -94,6 +102,24 @@ def _cache_keywords(keywords):
 
 def _dump_progress(entry: Dict[str, Any]) -> str:
     return json.dumps(public_progress(entry), ensure_ascii=False)
+
+
+async def _report_search_progress(task_id: str, entry: Dict[str, Any], info: Dict[str, Any]) -> None:
+    entry.update(
+        phase="search",
+        search_query=info.get("query"),
+        search_query_index=info.get("index") or 0,
+        search_query_total=info.get("total") or 0,
+        search_backend=info.get("engine"),
+        urls_found=info.get("urls_found") or 0,
+        current_url=None,
+        current_title=None,
+    )
+    async with async_session() as session:
+        task = await session.get(Task, task_id)
+        if task:
+            task.progress_json = _dump_progress(entry)
+            await session.commit()
 
 
 def _wants_stop(task_id: str, entry: Dict[str, Any]) -> bool:
@@ -284,6 +310,12 @@ async def _execute_analysis(
         current_url=None,
         current_title=None,
         source_mix=None,
+        phase="search",
+        search_query=None,
+        search_query_index=0,
+        search_query_total=0,
+        search_backend=search_engine,
+        urls_found=0,
     )
 
     async with async_session() as session:
@@ -301,8 +333,14 @@ async def _execute_analysis(
     engine_used = search_engine
     search_error = None
     try:
+        async def on_search_progress(info: Dict[str, Any]) -> None:
+            if _wants_stop(task_id, entry):
+                return
+            await _report_search_progress(task_id, entry, info)
+
         search_results, engine_used, _fallback = await search_urls_detailed(
-            object_name, keywords, engine=search_engine
+            object_name, keywords, engine=search_engine,
+            on_progress=on_search_progress,
         )
         all_urls.extend(search_results)
     except Exception as e:
@@ -337,6 +375,8 @@ async def _execute_analysis(
 
     entry["total"] = len(all_urls)
     entry["source_mix"] = count_source_mix(all_urls)
+    entry["phase"] = "analyze"
+    entry["urls_found"] = len(all_urls)
     async with async_session() as session:
         task = await session.get(Task, task_id)
         if task:

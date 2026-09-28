@@ -34,15 +34,13 @@
         </div>
 
         <div id="fields-yandex" style="display:none;">
-            <label>API-ключ</label>
-            <input type="password" id="llm-yandex-api-key">
             <label>Эндпоинт</label>
-            <input type="text" id="llm-yandex-endpoint" value="https://ai.api.cloud.yandex.net/v1">
+            <input type="text" id="llm-yandex-endpoint" value="{{ yandex_endpoint }}">
             <label>Folder ID</label>
-            <input type="text" id="llm-yandex-folder-id">
+            <input type="text" id="llm-yandex-folder-id" value="{{ yandex_folder_id }}" data-default="{{ yandex_folder_id }}" placeholder="каталог Yandex Cloud (b1g…)">
             <label>Модель</label>
             <select id="llm-yandex-model">
-                <option value="qwen3-235b-a22b-fp8" selected>Qwen3 235B (256k)</option>
+                <option value="qwen3-235b-a22b-fp8" {% if yandex_model == 'qwen3-235b-a22b-fp8' %}selected{% endif %}>Qwen3 235B (256k)</option>
                 <option value="gpt-oss-120b">gpt-oss-120b (128k)</option>
                 <option value="gpt-oss-20b">gpt-oss-20b (128k)</option>
                 <option value="aliceai-llm">Alice AI LLM (128k)</option>
@@ -148,10 +146,11 @@ function llmLoadSettings() {
         document.getElementById('llm-local-model').value = saved.local.model || '';
     }
     if (saved.yandex) {
-        document.getElementById('llm-yandex-api-key').value = saved.yandex.api_key || '';
-        document.getElementById('llm-yandex-endpoint').value = saved.yandex.endpoint || 'https://ai.api.cloud.yandex.net/v1';
-        document.getElementById('llm-yandex-folder-id').value = saved.yandex.folder_id || '';
-        document.getElementById('llm-yandex-model').value = saved.yandex.model || 'qwen3-235b-a22b-fp8';
+        const folderField = document.getElementById('llm-yandex-folder-id');
+        const folderDefault = (folderField.getAttribute('data-default') || '').trim();
+        document.getElementById('llm-yandex-endpoint').value = saved.yandex.endpoint || document.getElementById('llm-yandex-endpoint').value;
+        folderField.value = (saved.yandex.folder_id || folderDefault).trim();
+        document.getElementById('llm-yandex-model').value = saved.yandex.model || document.getElementById('llm-yandex-model').value;
     }
     if (saved.openai) {
         document.getElementById('llm-openai-api-key').value = saved.openai.api_key || '';
@@ -167,10 +166,10 @@ function llmCollectSettings() {
         endpoint: llmNormalizeLocalEndpoint(document.getElementById('llm-local-endpoint').value),
         model: document.getElementById('llm-local-model').value,
     };
+    const folderField = document.getElementById('llm-yandex-folder-id');
     const yandex = {
-        api_key: document.getElementById('llm-yandex-api-key').value,
-        endpoint: document.getElementById('llm-yandex-endpoint').value,
-        folder_id: document.getElementById('llm-yandex-folder-id').value,
+        endpoint: document.getElementById('llm-yandex-endpoint').value.trim(),
+        folder_id: (folderField.value || folderField.getAttribute('data-default') || '').trim(),
         model: document.getElementById('llm-yandex-model').value,
     };
     const openai = {
@@ -233,6 +232,19 @@ document.getElementById('search-form').onsubmit = async function(e) {
             document.getElementById('progress-status').textContent =
                 'В очереди: ожидается завершение другого анализа';
             document.getElementById('progress-text').textContent = '';
+            return;
+        }
+        if (data.phase === 'search' || (!data.total && data.search_query_total)) {
+            const i = data.search_query_index || 0;
+            const n = data.search_query_total || 0;
+            const pct = n > 0 ? Math.round(i / n * 100) : 0;
+            document.getElementById('progress-fill').style.width = pct + '%';
+            const backend = data.search_backend ? ' (' + data.search_backend + ')' : '';
+            document.getElementById('progress-status').textContent =
+                'Поиск' + backend + ': запрос ' + i + ' из ' + n
+                + ' | Найдено ссылок: ' + (data.urls_found || 0);
+            document.getElementById('progress-text').textContent =
+                data.search_query ? ('Запрос: ' + data.search_query) : '';
             return;
         }
         const pct = data.total > 0 ? Math.round(data.processed / data.total * 100) : 0;

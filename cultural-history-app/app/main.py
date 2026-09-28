@@ -9,6 +9,7 @@ from fastapi.responses import HTMLResponse, StreamingResponse, JSONResponse, Res
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+import httpx
 
 from app.config import settings
 from app.database import get_db, init_db, async_session
@@ -64,6 +65,9 @@ async def index(request: Request, db: AsyncSession = Depends(get_db)):
         "index.html",
         {
             "default_search_engine": settings.default_search_engine,
+            "yandex_folder_id": settings.yandex_folder_id,
+            "yandex_endpoint": settings.yandex_endpoint,
+            "yandex_model": settings.yandex_model,
             "recent_tasks": recent_tasks,
             "status_labels": TASK_STATUS_LABELS,
         },
@@ -111,6 +115,10 @@ async def test_llm_connection(body: LLMSettings):
     try:
         await provider.complete("Say OK")
         return {"ok": True}
+    except httpx.HTTPStatusError as e:
+        body = (e.response.text or "").strip()[:400]
+        detail = body or e.response.reason_phrase or str(e)
+        return {"ok": False, "error": f"{e.response.status_code}: {detail}"}
     except Exception as e:
         return {"ok": False, "error": str(e)}
 

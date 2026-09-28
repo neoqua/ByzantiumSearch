@@ -15,6 +15,16 @@ def _chat_completions_url(endpoint: str) -> str:
     return f"{base}/v1/chat/completions"
 
 
+def normalize_yandex_api_key(raw: str) -> str:
+    key = (raw or "").strip().strip('"').strip("'")
+    lowered = key.lower()
+    for prefix in ("api-key ", "bearer "):
+        if lowered.startswith(prefix):
+            key = key[len(prefix) :].strip()
+            break
+    return key
+
+
 def _extract_content(data: dict) -> str:
     msg = data["choices"][0]["message"]
     content = msg.get("content")
@@ -92,7 +102,10 @@ class YandexCloudProvider(LLMProvider):
             "temperature": 0.1,
             "max_tokens": 1024,
         }
-        headers = {"Authorization": f"Api-Key {self.api_key}"}
+        headers = {
+            "Authorization": f"Api-Key {self.api_key}",
+            "OpenAI-Project": self.folder_id,
+        }
         async with httpx.AsyncClient(timeout=60.0) as client:
             url = _chat_completions_url(self.endpoint)
             resp = await client.post(url, json=payload, headers=headers)
@@ -121,16 +134,18 @@ def get_provider(llm_settings: LLMSettings) -> LLMProvider:
             api_key=llm_settings.api_key,
         )
     if provider == "yandex":
-        if not llm_settings.api_key:
-            raise ValueError("API-ключ обязателен для Yandex Cloud")
-        if not llm_settings.folder_id:
+        api_key = normalize_yandex_api_key(cfg.yandex_api_key)
+        folder_id = (llm_settings.folder_id or cfg.yandex_folder_id or "").strip()
+        if not api_key:
+            raise ValueError("Задайте YANDEX_API_KEY в .env")
+        if not folder_id:
             raise ValueError("Folder ID обязателен для Yandex Cloud")
         return YandexCloudProvider(
-            endpoint=llm_settings.endpoint
+            endpoint=(llm_settings.endpoint or cfg.yandex_endpoint).strip()
             or "https://ai.api.cloud.yandex.net/v1",
-            model=llm_settings.model or "qwen3-235b-a22b-fp8",
-            api_key=llm_settings.api_key,
-            folder_id=llm_settings.folder_id,
+            model=(llm_settings.model or cfg.yandex_model or "qwen3-235b-a22b-fp8").strip(),
+            api_key=api_key,
+            folder_id=folder_id,
             version=llm_settings.version or "latest",
         )
     raise ValueError(f"Неизвестный провайдер: {provider}")
