@@ -12,12 +12,14 @@ from app.database import async_session
 from app.models import Task, Result, UrlCache, utcnow
 from app.search import search_urls_detailed
 from app.scraper import fetch_and_analyze, make_http_client, _blank_analysis
+from app.source_type import classify_source, count_source_mix, is_travel_blog_host
 from app.schemas import LLMSettings
 
 logger = logging.getLogger(__name__)
 
 _PROGRESS_KEYS = (
     "status", "processed", "total", "found_keyword", "current_url", "current_title",
+    "source_mix",
 )
 _ACTIVE_STATUSES = ("pending", "processing", "queued")
 
@@ -40,6 +42,7 @@ def seed_progress(task_id: str) -> Dict[str, Any]:
         "found_keyword": 0,
         "current_url": None,
         "current_title": None,
+        "source_mix": None,
     }
     _progress_store[task_id] = entry
     return entry
@@ -65,6 +68,7 @@ def progress_from_task(task: Task) -> Dict[str, Any]:
         "found_keyword": data.get("found_keyword", 0) or 0,
         "current_url": data.get("current_url"),
         "current_title": data.get("current_title"),
+        "source_mix": data.get("source_mix"),
         "error_message": task.error_message,
     }
     return out
@@ -281,6 +285,7 @@ async def _execute_analysis(
         found_keyword=0,
         current_url=None,
         current_title=None,
+        source_mix=None,
     )
 
     async with async_session() as session:
@@ -310,7 +315,12 @@ async def _execute_analysis(
 
     for url in manual_urls:
         if not any(item["url"] == url for item in all_urls):
-            all_urls.append({"url": url, "title": ""})
+            all_urls.append({
+                "url": url,
+                "title": "",
+                "source_type": classify_source(url, ""),
+                "travel_blog": is_travel_blog_host(url),
+            })
 
     if not all_urls:
         if search_error:
@@ -328,6 +338,12 @@ async def _execute_analysis(
         return
 
     entry["total"] = len(all_urls)
+    entry["source_mix"] = count_source_mix(all_urls)
+    async with async_session() as session:
+        task = await session.get(Task, task_id)
+        if task:
+            task.progress_json = _dump_progress(entry)
+            await session.commit()
     cache_keywords = _cache_keywords(keywords)
     counters = {"processed": 0, "found_keyword": 0}
     write_lock = asyncio.Lock()

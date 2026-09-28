@@ -9,6 +9,7 @@ services:
       - searxng-data:/etc/searxng
     environment:
       - SEARXNG_BASE_URL=http://localhost:8888
+      - SEARXNG_SECRET=${SEARXNG_SECRET:-change-me-to-a-random-string}
     restart: unless-stopped
 
   openserp:

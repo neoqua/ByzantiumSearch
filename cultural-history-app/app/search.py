@@ -1,9 +1,11 @@
 import asyncio
 import logging
-from typing import List, Dict
+from typing import List, Dict, Any
 import httpx
 from app.config import settings
-from app.source_type import classify_source, SOURCE_PRIORITY, UGC_QUERY_MARKERS
+from app.source_type import (
+    classify_source, SOURCE_PRIORITY, UGC_QUERY_MARKERS, is_travel_blog_host,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -17,16 +19,20 @@ def build_queries(object_name: str, keywords: List[str]) -> List[str]:
     return queries
 
 
-def _sort_key(item: Dict[str, str]) -> int:
-    return SOURCE_PRIORITY.get(item.get("source_type", "unknown"), 1)
+def _sort_key(item: Dict[str, Any]) -> tuple:
+    if item.get("travel_blog"):
+        return (0, 0)
+    return (1, SOURCE_PRIORITY.get(item.get("source_type", "unknown"), 1))
 
 
-def _extract(item: Dict) -> Dict[str, str]:
+def _extract(item: Dict) -> Dict[str, Any]:
     url = item.get("url", "").strip()
+    title = item.get("title", "")
     return {
         "url": url,
-        "title": item.get("title", ""),
-        "source_type": classify_source(url, item.get("title", "")),
+        "title": title,
+        "source_type": classify_source(url, title),
+        "travel_blog": is_travel_blog_host(url),
     }
 
 

@@ -29,6 +29,7 @@ def _task(**kwargs):
         search_engine = "searxng"
         search_engine_used = "searxng"
         error_message = None
+        progress_json = None
     t = _Task()
     for k, v in kwargs.items():
         setattr(t, k, v)
@@ -71,6 +72,22 @@ def test_report_label_shows_fallback():
     ))
     assert report.search_engine == "searxng"
     assert report.search_engine_label == "searxng → openserp"
+
+
+def test_report_includes_source_mix_from_progress():
+    import json
+    payload = json.dumps({
+        "source_mix": {
+            "ugc": 3, "official": 1, "agency": 0, "unknown": 2, "travel_blog": 2,
+        }
+    }, ensure_ascii=False)
+    report = asyncio.run(build_report(
+        "t",
+        _session(_task(progress_json=payload), []),
+    ))
+    assert report.source_mix["ugc"] == 3
+    assert "блоги и отзывы: 3" in report.source_mix_label
+    assert "тревел-площадки: 2" in report.source_mix_label
 
 
 def test_failed_task_carries_error_message():

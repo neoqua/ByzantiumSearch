@@ -53,6 +53,22 @@ function Wait-Http($url, $name, $timeout = 60) {
     return $false
 }
 
+function Ensure-SearxngSecret {
+    if (-not $env:SEARXNG_SECRET -and (Test-Path '.env')) {
+        $line = Get-Content '.env' | Where-Object { $_ -match '^SEARXNG_SECRET=' } | Select-Object -Last 1
+        if ($line) {
+            $env:SEARXNG_SECRET = $line.Substring('SEARXNG_SECRET='.Length).Trim()
+        }
+    }
+    if (-not $env:SEARXNG_SECRET) {
+        $bytes = New-Object byte[] 32
+        [System.Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($bytes)
+        $env:SEARXNG_SECRET = ($bytes | ForEach-Object { $_.ToString('x2') }) -join ''
+        Add-Content -Path '.env' -Value "SEARXNG_SECRET=$($env:SEARXNG_SECRET)"
+        Log 'Wrote SEARXNG_SECRET into .env (gitignored)'
+    }
+}
+
 if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
     Die 'docker not found. Install Docker Desktop first.'
 }
@@ -60,6 +76,8 @@ docker info *> $null
 if ($LASTEXITCODE -ne 0) {
     Die 'Docker daemon is not running. Start Docker Desktop, wait for "Engine running", and retry.'
 }
+
+Ensure-SearxngSecret
 
 if (Test-Http $LmStudioUrl) {
     Log "LM Studio detected at $LmStudioUrl"

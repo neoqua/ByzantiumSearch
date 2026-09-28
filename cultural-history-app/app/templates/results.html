@@ -22,6 +22,9 @@
 <p><strong>Объект:</strong> {{ report.object_name }}</p>
 <p><strong>Ключевые слова:</strong> {{ report.keywords }}</p>
 <p><strong>Поисковый движок:</strong> {{ report.search_engine_label or report.search_engine or 'searxng' }}</p>
+{% if report.source_mix_label %}
+<p><strong>Выдача поиска:</strong> {{ report.source_mix_label }}</p>
+{% endif %}
 
 <div>
     <div class="stat">

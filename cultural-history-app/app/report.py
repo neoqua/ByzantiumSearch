@@ -1,10 +1,12 @@
 import csv
 import io
+import json
 from typing import Optional
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.models import Task, Result
 from app.schemas import ReportData, AnalysisResult
+from app.source_type import format_source_mix
 
 
 _STATUS_CSV = {
@@ -20,6 +22,20 @@ def format_search_engine(requested: Optional[str], used: Optional[str]) -> str:
     if requested == "searxng" and used == "openserp":
         return "searxng → openserp"
     return used
+
+
+def _source_mix_from_task(task) -> Optional[dict]:
+    raw = getattr(task, "progress_json", None)
+    if not raw:
+        return None
+    try:
+        parsed = json.loads(raw)
+    except (TypeError, json.JSONDecodeError):
+        return None
+    if not isinstance(parsed, dict):
+        return None
+    mix = parsed.get("source_mix")
+    return mix if isinstance(mix, dict) else None
 
 
 async def build_report(task_id: str, session: AsyncSession) -> Optional[ReportData]:
@@ -62,6 +78,7 @@ async def build_report(task_id: str, session: AsyncSession) -> Optional[ReportDa
 
     requested = task.search_engine
     used = getattr(task, "search_engine_used", None) or requested
+    mix = _source_mix_from_task(task)
 
     return ReportData(
         task_id=task_id,
@@ -80,6 +97,8 @@ async def build_report(task_id: str, session: AsyncSession) -> Optional[ReportDa
         search_engine=requested,
         search_engine_label=format_search_engine(requested, used),
         error_message=getattr(task, "error_message", None),
+        source_mix=mix,
+        source_mix_label=format_source_mix(mix),
     )
 
 

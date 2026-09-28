@@ -50,9 +50,26 @@ wait_http() {
     printf ' ok\n'
 }
 
+ensure_searxng_secret() {
+    if [ -z "${SEARXNG_SECRET:-}" ] && [ -f .env ]; then
+        line="$(grep '^SEARXNG_SECRET=' .env | tail -1 || true)"
+        SEARXNG_SECRET="${line#SEARXNG_SECRET=}"
+        SEARXNG_SECRET="${SEARXNG_SECRET%$'\r'}"
+    fi
+    if [ -z "${SEARXNG_SECRET:-}" ]; then
+        SEARXNG_SECRET="$(openssl rand -hex 32 2>/dev/null || python3 -c 'import secrets; print(secrets.token_hex(32))')"
+        [ -n "$SEARXNG_SECRET" ] || die "cannot generate SEARXNG_SECRET"
+        printf 'SEARXNG_SECRET=%s\n' "$SEARXNG_SECRET" >> .env
+        log "Wrote SEARXNG_SECRET into .env (gitignored)"
+    fi
+    export SEARXNG_SECRET
+}
+
 command -v docker >/dev/null 2>&1 || die "docker not found. Install Docker Engine / Docker Desktop first."
 docker info >/dev/null 2>&1 || die "Docker daemon is not running (or current user has no access). Start Docker and retry."
 command -v curl >/dev/null 2>&1 || die "curl not found (needed for health checks)."
+
+ensure_searxng_secret
 
 if http_ok "$LMSTUDIO_URL"; then
     log "LM Studio detected at $LMSTUDIO_URL"

@@ -1,6 +1,8 @@
 use_default_settings: true
 
 server:
+  # Placeholder only. Runtime value comes from SEARXNG_SECRET (start scripts
+  # write it into .env; docker compose passes it into this container).
   secret_key: "change-me-to-a-random-string"
   bind_address: "0.0.0.0"
   port: 8080

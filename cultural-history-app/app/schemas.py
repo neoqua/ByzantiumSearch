@@ -33,6 +33,7 @@ class TaskStatus(BaseModel):
     current_url: Optional[str] = None
     current_title: Optional[str] = None
     error_message: Optional[str] = None
+    source_mix: Optional[dict] = None
     redirect: Optional[str] = None
 
 
@@ -67,3 +68,5 @@ class ReportData(BaseModel):
     search_engine: str = "searxng"
     search_engine_label: str = "searxng"
     error_message: Optional[str] = None
+    source_mix: Optional[dict] = None
+    source_mix_label: str = ""

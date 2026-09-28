@@ -12,6 +12,8 @@ def test_build_queries_contains_ugc_markers():
     assert "TestObject блог" in queries
     assert "TestObject форум" in queries
     assert "TestObject впечатления" in queries
+    assert "TestObject путеводитель" in queries
+    assert "TestObject путешествие" in queries
 
 
 @pytest.mark.asyncio
@@ -45,6 +47,27 @@ async def test_search_urls_prioritizes_ugc(httpx_mock):
     results = await search_urls("TestObject", [])
     assert results[0]["source_type"] == "ugc"
     assert results[1]["source_type"] == "agency"
+
+
+@pytest.mark.asyncio
+async def test_search_urls_prioritizes_travel_blog_hosts(httpx_mock):
+    def respond(request):
+        q = request.url.params["q"]
+        if q == "TestObject":
+            return httpx.Response(200, json={"results": [
+                {"url": "https://example.com/forum/1", "title": "Тема"},
+                {"url": "https://www.tourister.ru/reviews/x", "title": "Заметка"},
+                {"url": "https://agency.example/", "title": "Турагентство"},
+            ]})
+        return httpx.Response(200, json={"results": []})
+
+    httpx_mock.add_callback(respond, is_reusable=True)
+
+    results = await search_urls("TestObject", [])
+    assert results[0]["url"] == "https://www.tourister.ru/reviews/x"
+    assert results[0]["travel_blog"] is True
+    assert results[1]["source_type"] == "ugc"
+    assert results[-1]["source_type"] == "agency"
 
 
 @pytest.mark.asyncio

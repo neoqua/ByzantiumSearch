@@ -239,6 +239,49 @@ async def test_progress_json_persisted_and_store_cleared(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_source_mix_stored_on_task(monkeypatch):
+    await init_db()
+
+    async def mixed(*args, **kwargs):
+        return (
+            [
+                {"url": "https://www.tourister.ru/a", "title": "Заметка"},
+                {"url": "https://agency.example/", "title": "Турагентство"},
+            ],
+            "openserp",
+            False,
+        )
+
+    async def ok_fetch(url, object_name, keywords, title, llm_settings=None, client=None):
+        return {
+            "url": url, "title": title, "mentions_object": False, "has_keyword": False,
+            "keyword_found": None, "date_mentioned": None, "publication_date": None,
+            "author_location": None, "source_type": "other", "relevance_score": 0.0,
+            "raw_text_hash": "h", "analysis_status": "ok",
+        }
+
+    monkeypatch.setattr("app.analyzer.search_urls_detailed", mixed)
+    monkeypatch.setattr("app.analyzer.fetch_and_analyze", ok_fetch)
+
+    import json as json_mod
+
+    async with async_session() as s:
+        task = Task(object_name="Obj", keywords="kw", search_engine="openserp", status="pending")
+        s.add(task)
+        await s.commit()
+        task_id = task.id
+
+    await run_analysis(task_id, "Obj", "kw", None, None, "openserp")
+
+    async with async_session() as s:
+        task = await s.get(Task, task_id)
+        mix = json_mod.loads(task.progress_json)["source_mix"]
+        assert mix["ugc"] == 1
+        assert mix["agency"] == 1
+        assert mix["travel_blog"] == 1
+
+
+@pytest.mark.asyncio
 async def test_second_analysis_is_queued_while_first_runs(monkeypatch):
     await init_db()
     gate = asyncio.Event()

@@ -211,8 +211,21 @@ document.getElementById('search-form').onsubmit = async function(e) {
         }
         const pct = data.total > 0 ? Math.round(data.processed / data.total * 100) : 0;
         document.getElementById('progress-fill').style.width = pct + '%';
-        document.getElementById('progress-status').innerHTML =
-            `Обработано: ${data.processed} из ${data.total} | Найдено с ключевым словом: ${data.found_keyword}`;
+        let mixLine = '';
+        const mix = data.source_mix;
+        if (mix && data.total > 0) {
+            mixLine = 'Выдача: блоги/отзывы ' + (mix.ugc || 0)
+                + ', официальные ' + (mix.official || 0)
+                + ', агентства ' + (mix.agency || 0)
+                + ', прочие ' + (mix.unknown || 0);
+            if (mix.travel_blog) {
+                mixLine += ' (тревел-площадки: ' + mix.travel_blog + ')';
+            }
+            mixLine += '. ';
+        }
+        document.getElementById('progress-status').textContent =
+            mixLine + 'Обработано: ' + data.processed + ' из ' + data.total
+            + ' | Найдено с ключевым словом: ' + data.found_keyword;
         const progressTextEl = document.getElementById('progress-text');
         progressTextEl.textContent = '';
         if (data.current_url) {
