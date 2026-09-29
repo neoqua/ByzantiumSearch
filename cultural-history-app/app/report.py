@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models import Task, Result
 from app.schemas import ReportData, AnalysisResult
 from app.source_type import format_source_mix
+from app.fields import format_source_type
 
 
 _DATE_SOURCE_LABEL = {
@@ -18,7 +19,11 @@ _STATUS_CSV = {
     "ok": "ок",
     "fetch_failed": "не скачано",
     "llm_failed": "LLM не ответил",
+    "prefiltered": "без объекта и ключа",
+    "disputed": "спорное упоминание",
 }
+
+_COUNTED_STATUSES = frozenset({"ok", "prefiltered", "disputed"})
 
 
 def format_date_source(source: Optional[str]) -> str:
@@ -58,15 +63,16 @@ async def build_report(task_id: str, session: AsyncSession) -> Optional[ReportDa
     urls_processed = len(result_rows)
     fetch_failed = sum(1 for r in result_rows if (r.analysis_status or "ok") == "fetch_failed")
     llm_failed = sum(1 for r in result_rows if (r.analysis_status or "ok") == "llm_failed")
+    prefiltered = sum(1 for r in result_rows if (r.analysis_status or "ok") == "prefiltered")
+    disputed = sum(1 for r in result_rows if (r.analysis_status or "ok") == "disputed")
+    analyzed_count = sum(
+        1 for r in result_rows if (r.analysis_status or "ok") in _COUNTED_STATUSES
+    )
     ok_rows = [r for r in result_rows if (r.analysis_status or "ok") == "ok"]
-    total_mentions = sum(1 for r in ok_rows if r.mentions_object)
-    with_keyword = sum(1 for r in ok_rows if r.has_keyword)
-    ok_count = len(ok_rows)
-    keyword_pct = round((with_keyword / ok_count * 100), 1) if ok_count > 0 else 0.0
-
-    visitor_pct = None
-    if task.annual_visitors and task.annual_visitors > 0:
-        visitor_pct = round((with_keyword / task.annual_visitors * 100), 4)
+    mention_rows = [r for r in ok_rows if r.mentions_object]
+    total_mentions = len(mention_rows)
+    with_keyword = sum(1 for r in mention_rows if r.has_keyword)
+    keyword_pct = round((with_keyword / total_mentions * 100), 1) if total_mentions > 0 else 0.0
 
     results_list = [
         AnalysisResult(
@@ -80,6 +86,7 @@ async def build_report(task_id: str, session: AsyncSession) -> Optional[ReportDa
             author_location=r.author_location,
             relevance_score=r.relevance_score or 0.0,
             source_type=r.source_type,
+            source_type_label=format_source_type(r.source_type),
             analysis_status=r.analysis_status or "ok",
             date_source=getattr(r, "date_source", None),
         )
@@ -99,9 +106,12 @@ async def build_report(task_id: str, session: AsyncSession) -> Optional[ReportDa
         total_mentions=total_mentions,
         mentions_with_keyword=with_keyword,
         keyword_percentage=keyword_pct,
-        percentage_of_visitors=visitor_pct,
+        percentage_of_visitors=None,
         fetch_failed_count=fetch_failed,
         llm_failed_count=llm_failed,
+        prefiltered_count=prefiltered,
+        disputed_count=disputed,
+        analyzed_count=analyzed_count,
         results=results_list,
         status=task.status,
         search_engine=requested,
@@ -117,20 +127,21 @@ def report_to_csv(report: ReportData) -> str:
     writer = csv.writer(buf, delimiter=";", lineterminator="\r\n")
     writer.writerow([
         "№", "URL", "Заголовок", "Источник", "Ключевые слова",
-        "Дата", "Источник даты", "Геопривязка", "Релевантность", "Упоминает объект", "Статус",
+        "Дата публикации", "Источник даты публикации", "Дата упоминания",
+        "Геопривязка", "Релевантность", "Упоминает объект", "Статус",
     ])
     for i, r in enumerate(report.results, 1):
-        date_val = r.publication_date or r.date_mentioned or ""
         mentions_val = "да" if r.mentions_object else "нет"
         status_val = _STATUS_CSV.get(r.analysis_status or "ok", r.analysis_status or "ok")
         writer.writerow([
             i,
             r.url,
             r.title or "",
-            r.source_type or "",
+            r.source_type_label or r.source_type or "",
             r.keyword_found or "",
-            date_val,
+            r.publication_date or "",
             format_date_source(r.date_source),
+            r.date_mentioned or "",
             r.author_location or "",
             r.relevance_score,
             mentions_val,

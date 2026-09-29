@@ -262,7 +262,7 @@ async def test_results_page_and_csv_include_mentions_and_status(api_client):
     html = await api_client.get(f"/results/{task_id}")
     assert html.status_code == 200
     assert "Упоминает объект" in html.text
-    assert "определено моделью" in html.text
+    assert "по адресу страницы" in html.text
     assert "searxng → openserp" in html.text
     assert "не скачано" in html.text
     assert "Упоминаний объекта" in html.text

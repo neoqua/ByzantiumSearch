@@ -60,8 +60,11 @@ def test_total_mentions_counts_only_ok_object_hits():
     assert report.mentions_with_keyword == 1
     assert report.fetch_failed_count == 1
     assert report.llm_failed_count == 1
-    assert report.keyword_percentage == 50.0  # 1 of 2 ok rows
-    assert report.percentage_of_visitors == 0.01
+    assert report.keyword_percentage == 100.0  # 1 of 1 mentions
+    assert report.percentage_of_visitors is None
+    assert report.analyzed_count == 2
+    assert report.prefiltered_count == 0
+    assert report.disputed_count == 0
     assert report.search_engine_label == "searxng"
 
 
@@ -99,6 +102,30 @@ def test_failed_task_carries_error_message():
     assert "не вернул" in report.error_message
 
 
+def test_keyword_percentage_is_among_mentions_only():
+    rows = [
+        Result(task_id="t", url="https://a", mentions_object=True, has_keyword=True,
+               analysis_status="ok", source_type="ugc"),
+        Result(task_id="t", url="https://b", mentions_object=True, has_keyword=False,
+               analysis_status="ok", source_type="official"),
+        Result(task_id="t", url="https://c", mentions_object=False, has_keyword=True,
+               analysis_status="ok", source_type="unknown"),
+        Result(task_id="t", url="https://d", mentions_object=False, has_keyword=False,
+               analysis_status="prefiltered", source_type="unknown"),
+        Result(task_id="t", url="https://e", mentions_object=False, has_keyword=True,
+               analysis_status="disputed", source_type="ugc"),
+    ]
+    report = asyncio.run(build_report("t", _session(_task(), rows)))
+    assert report.total_mentions == 2
+    assert report.mentions_with_keyword == 1
+    assert report.keyword_percentage == 50.0
+    assert report.prefiltered_count == 1
+    assert report.disputed_count == 1
+    assert report.analyzed_count == 5
+    assert report.results[0].source_type_label == "блог/отзыв"
+    assert report.percentage_of_visitors is None
+
+
 def test_csv_includes_mentions_and_status():
     report = ReportData(
         task_id="t", object_name="o", keywords="k", annual_visitors=None,
@@ -116,7 +143,9 @@ def test_csv_includes_mentions_and_status():
     csv_text = report_to_csv(report)
     assert csv_text.startswith("\ufeff")
     assert "Упоминает объект" in csv_text
-    assert "Источник даты" in csv_text
+    assert "Дата публикации" in csv_text
+    assert "Дата упоминания" in csv_text
+    assert "Источник даты публикации" in csv_text
     assert "со страницы" in csv_text
     assert "Статус" in csv_text
     assert "да" in csv_text

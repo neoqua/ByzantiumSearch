@@ -7,6 +7,13 @@ from app.config import settings
 from app.llm import analyze_text_with_retry
 from app.keyword_match import match_keywords
 from app.page_dates import extract_publication_date
+from app.fields import (
+    object_in_text,
+    grounded_location,
+    relevance_score,
+    heuristic_source_type,
+    finalize_dates,
+)
 from app.schemas import LLMSettings
 
 logger = logging.getLogger(__name__)
@@ -40,20 +47,19 @@ def text_hash(text: str) -> str:
 
 
 def _blank_analysis(url: str, title: str, status: str) -> dict:
+    dates = finalize_dates(None, None, None)
     return {
         "url": url,
         "title": title,
         "mentions_object": False,
         "has_keyword": False,
         "keyword_found": None,
-        "date_mentioned": None,
-        "publication_date": None,
         "author_location": None,
-        "source_type": "other",
+        "source_type": heuristic_source_type(url, title),
         "relevance_score": 0.0,
         "raw_text_hash": None,
         "analysis_status": status,
-        "date_source": None,
+        **dates,
     }
 
 
@@ -108,22 +114,57 @@ async def fetch_and_analyze(
         return _blank_analysis(url, title, "fetch_failed")
     h = text_hash(text)
     page_date = extract_publication_date(raw)
+    blob = f"{title or ''} {text}"
+    matched_kw, matched_forms = match_keywords(blob, keywords)
+    has_kw = bool(matched_kw)
+    obj_hit = object_in_text(blob, object_name)
+    source_type = heuristic_source_type(url, title)
+    keyword_found = ", ".join(matched_forms) if matched_forms else None
+
+    if not obj_hit and not has_kw:
+        dates = finalize_dates(page_date, None, None)
+        return {
+            "url": url,
+            "title": title,
+            "mentions_object": False,
+            "has_keyword": False,
+            "keyword_found": None,
+            "author_location": None,
+            "source_type": source_type,
+            "relevance_score": 0.0,
+            "raw_text_hash": h,
+            "analysis_status": "prefiltered",
+            **dates,
+        }
+
     llm_result = await analyze_text_with_retry(
         object_name, keywords, title, text, llm_settings=llm_settings
     )
-    llm_result.setdefault("source_type", "other")
-    llm_result["url"] = url
-    llm_result["title"] = title
-    llm_result["raw_text_hash"] = h
-    matched_kw, matched_forms = match_keywords(text, keywords)
-    llm_result["has_keyword"] = bool(matched_kw)
-    llm_result["keyword_found"] = ", ".join(matched_forms) if matched_forms else None
-    llm_result.setdefault("analysis_status", "ok")
-    if page_date:
-        llm_result["publication_date"] = page_date
-        llm_result["date_source"] = "page"
-    elif llm_result.get("publication_date"):
-        llm_result["date_source"] = "llm"
-    else:
-        llm_result["date_source"] = None
-    return llm_result
+    status = llm_result.get("analysis_status") or "ok"
+    mentions = bool(llm_result.get("mentions_object")) if status == "ok" else False
+    if status == "ok" and obj_hit and not mentions:
+        status = "disputed"
+        mentions = False
+
+    location = llm_result.get("author_location") if status == "ok" else None
+    if location:
+        location = grounded_location(str(location), blob)
+
+    dates = finalize_dates(
+        page_date,
+        llm_result.get("publication_date") if status == "ok" else None,
+        llm_result.get("date_mentioned") if status in ("ok", "disputed") else None,
+    )
+    return {
+        "url": url,
+        "title": title,
+        "mentions_object": mentions,
+        "has_keyword": has_kw,
+        "keyword_found": keyword_found,
+        "author_location": location,
+        "source_type": source_type,
+        "relevance_score": relevance_score(mentions, has_kw, url, title),
+        "raw_text_hash": h,
+        "analysis_status": status,
+        **dates,
+    }

@@ -29,7 +29,7 @@
 <div>
     <div class="stat">
         <div class="stat-value">{{ report.total_mentions }}</div>
-        <div class="stat-label">Упоминаний объекта</div>
+        <div class="stat-label">Упоминаний объекта<br><span class="hint">из {{ report.analyzed_count }} разобранных страниц</span></div>
     </div>
     <div class="stat">
         <div class="stat-value">{{ report.urls_processed }}</div>
@@ -37,11 +37,11 @@
     </div>
     <div class="stat">
         <div class="stat-value">{{ report.mentions_with_keyword }}</div>
-        <div class="stat-label">С ключевым словом</div>
+        <div class="stat-label">Упоминаний с ключевым словом</div>
     </div>
     <div class="stat">
         <div class="stat-value">{{ report.keyword_percentage }}%</div>
-        <div class="stat-label">% с ключевым словом<br><span class="hint">от успешно разобранных страниц</span></div>
+        <div class="stat-label">% с ключевым словом<br><span class="hint">от упоминаний объекта</span></div>
     </div>
     {% if report.fetch_failed_count %}
     <div class="stat">
@@ -55,13 +55,22 @@
         <div class="stat-label">LLM не ответил</div>
     </div>
     {% endif %}
-    {% if report.percentage_of_visitors is not none %}
+    {% if report.prefiltered_count %}
     <div class="stat">
-        <div class="stat-value">{{ report.percentage_of_visitors }}%</div>
-        <div class="stat-label" title="страниц с ключевым словом / годовая посещаемость × 100">
-            Упоминаний с ключевым словом<br>на годовую посещаемость
-            ({{ report.annual_visitors }}/год)
-        </div>
+        <div class="stat-value">{{ report.prefiltered_count }}</div>
+        <div class="stat-label">Без объекта и ключа<br><span class="hint">модель не вызывалась</span></div>
+    </div>
+    {% endif %}
+    {% if report.disputed_count %}
+    <div class="stat">
+        <div class="stat-value">{{ report.disputed_count }}</div>
+        <div class="stat-label">Спорных упоминаний<br><span class="hint">стебель объекта есть, модель сказала нет</span></div>
+    </div>
+    {% endif %}
+    {% if report.annual_visitors %}
+    <div class="stat">
+        <div class="stat-value">{{ report.annual_visitors }}</div>
+        <div class="stat-label">Годовая посещаемость объекта<br><span class="hint">справочно, не процент</span></div>
     </div>
     {% endif %}
 </div>
@@ -73,9 +82,10 @@
             <th>#</th>
             <th>URL</th>
             <th>Заголовок</th>
-            <th>Источник <span class="hint">(определено моделью)</span></th>
+            <th>Источник <span class="hint">(по адресу страницы)</span></th>
             <th>Ключевое слово</th>
-            <th>Дата</th>
+            <th>Дата публикации</th>
+            <th>Дата упоминания</th>
             <th>Геопривязка</th>
             <th>Релев.</th>
             <th>Упоминает объект</th>
@@ -84,19 +94,22 @@
     </thead>
     <tbody>
         {% for r in report.results %}
-        <tr{% if r.analysis_status != 'ok' %} class="row-failed"{% endif %}>
+        <tr{% if r.analysis_status in ('fetch_failed', 'llm_failed', 'disputed') %} class="row-failed"{% endif %}>
             <td>{{ loop.index }}</td>
             <td><a href="{{ r.url }}" target="_blank">{{ r.url[:50] }}...</a></td>
             <td>{{ r.title or '—' }}</td>
-            <td>{{ r.source_type or '—' }}</td>
+            <td>{{ r.source_type_label or r.source_type or '—' }}</td>
             <td>{{ r.keyword_found or '—' }}</td>
-            <td>{{ r.publication_date or r.date_mentioned or '—' }}{% if r.date_source %}<br><span class="hint">{% if r.date_source == 'page' %}со страницы{% elif r.date_source == 'llm' %}из модели{% endif %}</span>{% endif %}</td>
+            <td>{{ r.publication_date or '—' }}{% if r.date_source %}<br><span class="hint">{% if r.date_source == 'page' %}со страницы{% elif r.date_source == 'llm' %}из модели{% endif %}</span>{% endif %}</td>
+            <td>{{ r.date_mentioned or '—' }}</td>
             <td>{{ r.author_location or '—' }}</td>
             <td>{{ r.relevance_score }}</td>
-            <td>{% if r.analysis_status != 'ok' %}—{% elif r.mentions_object %}да{% else %}нет{% endif %}</td>
+            <td>{% if r.analysis_status not in ('ok', 'prefiltered', 'disputed') %}—{% elif r.mentions_object %}да{% else %}нет{% endif %}</td>
             <td>
                 {% if r.analysis_status == 'fetch_failed' %}не скачано
                 {% elif r.analysis_status == 'llm_failed' %}LLM не ответил
+                {% elif r.analysis_status == 'prefiltered' %}без объекта и ключа
+                {% elif r.analysis_status == 'disputed' %}спорное упоминание
                 {% else %}ок{% endif %}
             </td>
         </tr>

@@ -96,8 +96,11 @@ def _split_urls(urls_raw: Optional[str]):
     return [u.strip() for u in urls_raw.split("\n") if u.strip()]
 
 
+_CACHEABLE_STATUSES = frozenset({"ok", "prefiltered", "disputed"})
+
+
 def _cache_keywords(keywords):
-    return ",".join(keywords) + "#kwv4"
+    return ",".join(keywords) + "#kwv5"
 
 
 def _dump_progress(entry: Dict[str, Any]) -> str:
@@ -232,7 +235,7 @@ async def _write_cache_and_result(
     write_cache: bool,
 ) -> None:
     analysis_status = llm_data.get("analysis_status") or "ok"
-    if write_cache and analysis_status == "ok":
+    if write_cache and analysis_status in _CACHEABLE_STATUSES:
         payload = json.dumps(llm_data, ensure_ascii=False)
         pk = (url, object_name, cache_keywords)
         cached = await session.get(UrlCacheV2, pk)
@@ -259,7 +262,7 @@ async def _write_cache_and_result(
 
     mentions = llm_data.get("mentions_object", False)
     has_kw = llm_data.get("has_keyword", False)
-    if has_kw and analysis_status == "ok":
+    if has_kw and analysis_status in _CACHEABLE_STATUSES:
         counters["found_keyword"] += 1
 
     session.add(Result(

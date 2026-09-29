@@ -22,11 +22,9 @@ def _build_prompt(object_name: str, keywords: list[str], title: str, text: str) 
         "{\n"
         '  "mentions_object": true/false,\n'
         '  "object_name": "название из текста или null",\n'
-        '  "date_mentioned": "ДД.ММ.ГГГГ из текста или null",\n'
-        '  "publication_date": "ДД.ММ.ГГГГ или null",\n'
-        '  "author_location": "город, страна, регион или null",\n'
-        '  "relevance_score": 0.0-1.0,\n'
-        '  "source_type": "blog/forum/social/official/agency/other"\n'
+        '  "date_mentioned": "ДД.ММ.ГГГГ события/визита из текста или null",\n'
+        '  "publication_date": "ДД.ММ.ГГГГ публикации страницы или null",\n'
+        '  "author_location": "город/регион автора, только если явно есть в тексте, иначе null"\n'
         "}"
     )
 

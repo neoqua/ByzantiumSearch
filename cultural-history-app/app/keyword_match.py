@@ -58,6 +58,21 @@ def match_keywords(text: str, keywords: list[str]) -> tuple[list[str], list[str]
     return matched_kw, matched_forms
 
 
+def stems_in_order(text: str, phrase: str) -> bool:
+    """True if phrase stems appear in order, allowing extra words in between."""
+    need = [_stem(t) for t in tokenize(phrase or "")]
+    if not need:
+        return False
+    page_stems = [_stem(t) for t in tokenize(text or "")]
+    i = 0
+    for ps in page_stems:
+        if i < len(need) and _stem_matches(ps, need[i]):
+            i += 1
+            if i == len(need):
+                return True
+    return False
+
+
 def has_keyword(text: str, keywords: list[str]) -> bool:
     matched_kw, _ = match_keywords(text, keywords)
     return bool(matched_kw)

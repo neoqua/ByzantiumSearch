@@ -1,4 +1,4 @@
-from app.keyword_match import tokenize, match_keywords, has_keyword
+from app.keyword_match import tokenize, match_keywords, has_keyword, stems_in_order
 
 
 def test_tokenize_splits_words():
@@ -89,3 +89,11 @@ def test_empty_keywords():
 
 def test_pure_punctuation_keyword():
     assert match_keywords("hello world", ["..."]) == ([], [])
+
+
+def test_stems_in_order_allows_gaps():
+    assert stems_in_order(
+        "Свято-Климентовский мужской монастырь",
+        "Свято-Климентовский монастырь",
+    )
+    assert not stems_in_order("Погода в Крыму", "Свято-Климентовский монастырь")

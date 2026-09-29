@@ -47,6 +47,7 @@ class AnalysisResult(BaseModel):
     publication_date: Optional[str] = None
     author_location: Optional[str] = None
     source_type: Optional[str] = None
+    source_type_label: Optional[str] = None
     analysis_status: str = "ok"
     date_source: Optional[str] = None
     relevance_score: float = 0.0
@@ -61,9 +62,12 @@ class ReportData(BaseModel):
     total_mentions: int
     mentions_with_keyword: int
     keyword_percentage: float
-    percentage_of_visitors: Optional[float]
+    percentage_of_visitors: Optional[float] = None
     fetch_failed_count: int = 0
     llm_failed_count: int = 0
+    prefiltered_count: int = 0
+    disputed_count: int = 0
+    analyzed_count: int = 0
     results: List[AnalysisResult]
     status: str = "completed"
     search_engine: str = "searxng"

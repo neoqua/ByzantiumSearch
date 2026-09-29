@@ -197,8 +197,8 @@ async def test_fetch_and_analyze_prefers_page_date_over_llm(monkeypatch):
 
 
 def test_cache_key_bumped_for_status_change():
-    assert _cache_keywords(["a", "b"]).endswith("#kwv4")
-    assert "#kwv3" not in _cache_keywords(["a"])
+    assert _cache_keywords(["a", "b"]).endswith("#kwv5")
+    assert "#kwv4" not in _cache_keywords(["a"])
 
 
 @pytest.mark.asyncio

@@ -83,10 +83,11 @@ def test_coerce_result_keeps_valid_values():
     assert result["relevance_score"] == 0.95
 
 
-def test_build_prompt_contains_source_type():
+def test_build_prompt_excludes_source_type_and_relevance():
     prompt = _build_prompt("Test Monastery", ["Byzantium"], "Title", "Text")
-    assert "source_type" in prompt
-    assert "blog/forum/social/official/agency/other" in prompt
+    assert "source_type" not in prompt
+    assert "relevance_score" not in prompt
+    assert "blog/forum/social" not in prompt
 
 
 def test_coerce_result_source_type_valid():
