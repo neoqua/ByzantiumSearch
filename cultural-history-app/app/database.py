@@ -24,6 +24,7 @@ async def init_db():
         await conn.run_sync(_ensure_tasks_stop_requested)
         await conn.run_sync(_ensure_results_date_source)
         await conn.run_sync(_ensure_tasks_content_filters)
+        await conn.run_sync(_ensure_tasks_use_cache)
         await conn.run_sync(_ensure_results_content_kind)
         await conn.run_sync(_ensure_results_review_fields)
 
@@ -85,6 +86,11 @@ def _ensure_tasks_content_filters(sync_conn):
                    "ALTER TABLE tasks ADD COLUMN period_years INTEGER")
     _ensure_column(sync_conn, "tasks", "period_cutoff",
                    "ALTER TABLE tasks ADD COLUMN period_cutoff VARCHAR(10)")
+
+
+def _ensure_tasks_use_cache(sync_conn):
+    _ensure_column(sync_conn, "tasks", "use_cache",
+                   "ALTER TABLE tasks ADD COLUMN use_cache BOOLEAN")
 
 
 def _ensure_results_content_kind(sync_conn):

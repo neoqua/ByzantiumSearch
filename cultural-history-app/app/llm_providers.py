@@ -25,6 +25,17 @@ def normalize_yandex_api_key(raw: str) -> str:
     return key
 
 
+def _yandex_chat_payload(model_id: str, prompt: str) -> dict:
+    return {
+        "model": model_id,
+        "messages": [{"role": "user", "content": prompt}],
+        "temperature": 0.1,
+        "max_tokens": 1024,
+        # OpenAI-compat endpoint rejects reasoning_options; this is what Qwen honors.
+        "chat_template_kwargs": {"enable_thinking": False},
+    }
+
+
 def _extract_content(data: dict) -> str:
     msg = data["choices"][0]["message"]
     content = msg.get("content")
@@ -96,12 +107,7 @@ class YandexCloudProvider(LLMProvider):
         model_id = f"gpt://{self.folder_id}/{self.model}"
         if self.version and "/latest" not in self.model:
             model_id = f"{model_id}/{self.version}"
-        payload = {
-            "model": model_id,
-            "messages": [{"role": "user", "content": prompt}],
-            "temperature": 0.1,
-            "max_tokens": 1024,
-        }
+        payload = _yandex_chat_payload(model_id, prompt)
         headers = {
             "Authorization": f"Api-Key {self.api_key}",
             "OpenAI-Project": self.folder_id,

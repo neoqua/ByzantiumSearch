@@ -25,6 +25,7 @@
 <p><strong>Поисковый движок:</strong> {{ report.search_engine_label or report.search_engine or 'searxng' }}</p>
 <p><strong>Источники:</strong> {% if report.content_scope == 'personal' %}только личные отзывы{% else %}все источники{% endif %}</p>
 <p><strong>Период публикаций:</strong> {{ report.period_label }}</p>
+<p><strong>Кэш:</strong> {% if report.use_cache %}использовался{% else %}отключён для этого прогона{% endif %}</p>
 {% if report.source_mix_label %}
 <p><strong>Выдача поиска:</strong> {{ report.source_mix_label }}</p>
 {% endif %}

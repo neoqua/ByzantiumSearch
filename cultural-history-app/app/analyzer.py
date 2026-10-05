@@ -113,9 +113,12 @@ def _as_units(payload) -> List[dict]:
 
 
 def _should_cache_units(payload) -> bool:
-    return any(
+    units = _as_units(payload)
+    if not units:
+        return False
+    return all(
         (u.get("analysis_status") or "ok") in _CACHEABLE_STATUSES
-        for u in _as_units(payload)
+        for u in units
     )
 
 
@@ -360,6 +363,9 @@ async def _execute_analysis(
         content_scope = getattr(task, "content_scope", None) or "all"
         period_years = getattr(task, "period_years", None)
         cutoff = parse_cutoff_iso(getattr(task, "period_cutoff", None))
+        use_cache = getattr(task, "use_cache", None)
+        if use_cache is None:
+            use_cache = True
         await session.commit()
 
     all_urls = []
@@ -445,29 +451,29 @@ async def _execute_analysis(
                 return
             from_cache = False
             llm_data = None
-            async with write_lock:
-                async with async_session() as session:
-                    cached = await session.get(
-                        UrlCacheV2, (url, object_name, cache_keywords)
-                    )
-                    if cached:
-                        units = _as_units(
-                            json.loads(cached.result_json) if cached.result_json else {}
+            if use_cache:
+                async with write_lock:
+                    async with async_session() as session:
+                        cached = await session.get(
+                            UrlCacheV2, (url, object_name, cache_keywords)
                         )
-                        if not units:
-                            units = [{}]
-                        _bump_total_for_units(entry, len(units))
-                        from_cache = True
-                        task = await session.get(Task, task_id)
-                        for unit in units:
-                            unit.setdefault("analysis_status", "ok")
-                            overlayed = overlay_filters(unit, content_scope, cutoff)
-                            await _write_cache_and_result(
-                                session, task, task_id, url,
-                                overlayed.get("title") or title, object_name,
-                                cache_keywords, overlayed, entry, counters,
-                                write_cache=False,
+                        if cached:
+                            units = _as_units(
+                                json.loads(cached.result_json) if cached.result_json else {}
                             )
+                            if _should_cache_units(units):
+                                _bump_total_for_units(entry, len(units))
+                                from_cache = True
+                                task = await session.get(Task, task_id)
+                                for unit in units:
+                                    unit.setdefault("analysis_status", "ok")
+                                    overlayed = overlay_filters(unit, content_scope, cutoff)
+                                    await _write_cache_and_result(
+                                        session, task, task_id, url,
+                                        overlayed.get("title") or title, object_name,
+                                        cache_keywords, overlayed, entry, counters,
+                                        write_cache=False,
+                                    )
             if from_cache:
                 return
             if _wants_stop(task_id, entry):

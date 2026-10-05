@@ -18,6 +18,8 @@ def test_search_request_defaults_content_filters():
     r = SearchRequest(object_name="X", keywords="k")
     assert r.content_scope == "personal"
     assert r.period_years == 1
+    assert r.use_cache is True
+    assert SearchRequest(object_name="X", keywords="k", use_cache=False).use_cache is False
     assert SearchRequest(object_name="X", keywords="k", search_engine="openserp").search_engine == "openserp"
     assert SearchRequest(object_name="X", keywords="k", search_engine="searxng").search_engine == "searxng"
 

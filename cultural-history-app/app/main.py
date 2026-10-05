@@ -91,6 +91,7 @@ async def api_search(
         content_scope=body.content_scope,
         period_years=body.period_years or None,
         period_cutoff=cutoff_iso(cutoff),
+        use_cache=body.use_cache,
         status="pending",
     )
     db.add(task)

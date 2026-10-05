@@ -32,6 +32,7 @@ class Task(Base):
     content_scope = Column(String, nullable=True)
     period_years = Column(Integer, nullable=True)
     period_cutoff = Column(String, nullable=True)
+    use_cache = Column(Boolean, nullable=True)
     status = Column(String, default="pending")
     created_at = Column(DateTime, default=utcnow)
     completed_at = Column(DateTime, nullable=True)

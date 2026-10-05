@@ -24,6 +24,7 @@ class SearchRequest(BaseModel):
     )
     content_scope: Literal["personal", "all"] = "personal"
     period_years: int = Field(default=1, ge=0, le=10)
+    use_cache: bool = True
 
 
 class TaskStatus(BaseModel):
@@ -80,6 +81,7 @@ class ReportData(BaseModel):
     content_scope: str = "all"
     period_years: Optional[int] = None
     period_label: str = "без ограничения"
+    use_cache: bool = True
     results: List[AnalysisResult]
     status: str = "completed"
     search_engine: str = "searxng"

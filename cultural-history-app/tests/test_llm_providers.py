@@ -7,6 +7,7 @@ from app.llm_providers import (
     GenericOpenAIProvider,
     YandexCloudProvider,
     normalize_yandex_api_key,
+    _yandex_chat_payload,
 )
 
 
@@ -70,3 +71,8 @@ def test_get_provider_yandex_strips_folder(monkeypatch):
     monkeypatch.setattr(settings, "yandex_folder_id", "")
     provider = get_provider(LLMSettings(provider="yandex", folder_id="  f  "))
     assert provider.folder_id == "f"
+
+
+def test_yandex_payload_disables_reasoning():
+    payload = _yandex_chat_payload("gpt://folder/qwen3.6-35b-a3b/latest", "Say OK")
+    assert payload["chat_template_kwargs"] == {"enable_thinking": False}

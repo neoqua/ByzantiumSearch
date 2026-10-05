@@ -128,6 +128,7 @@ async def build_report(task_id: str, session: AsyncSession) -> Optional[ReportDa
         content_scope=getattr(task, "content_scope", None) or "all",
         period_years=getattr(task, "period_years", None),
         period_label=period_label(getattr(task, "period_years", None)),
+        use_cache=True if getattr(task, "use_cache", None) is None else bool(task.use_cache),
         results=results_list,
         status=task.status,
         search_engine=requested,

@@ -586,3 +586,127 @@ async def test_run_analysis_one_result_per_review(monkeypatch):
         assert len(payload) == 2
 
 
+def test_mixed_llm_failed_page_is_not_cacheable():
+    from app.analyzer import _should_cache_units
+    assert _should_cache_units([
+        {"analysis_status": "ok"},
+        {"analysis_status": "llm_failed"},
+    ]) is False
+    assert _should_cache_units([
+        {"analysis_status": "ok"},
+        {"analysis_status": "prefiltered"},
+    ]) is True
+    assert _should_cache_units([]) is False
+
+
+@pytest.mark.asyncio
+async def test_mixed_llm_failed_cache_is_ignored(monkeypatch):
+    await init_db()
+    url = "https://maps.example/reviews"
+    key = _cache_keywords(["kw"])
+    called = {"n": 0}
+
+    async def boom(*args, **kwargs):
+        raise AssertionError("search should not run")
+
+    async def fake_fetch(u, object_name, keywords, title, llm_settings=None, client=None, **kwargs):
+        called["n"] += 1
+        return [
+            {
+                "url": u, "title": "r1", "mentions_object": True, "has_keyword": False,
+                "keyword_found": None, "date_mentioned": None, "publication_date": None,
+                "author_location": None, "source_type": "ugc",
+                "content_kind": "personal_review", "excerpt": "цитата",
+                "impression": "смысл", "relevance_score": 0.7, "raw_text_hash": "h1",
+                "analysis_status": "ok",
+            },
+            {
+                "url": u, "title": "r2", "mentions_object": True, "has_keyword": False,
+                "keyword_found": None, "date_mentioned": None, "publication_date": None,
+                "author_location": None, "source_type": "ugc",
+                "content_kind": "personal_review", "excerpt": "ещё",
+                "impression": "ещё смысл", "relevance_score": 0.7, "raw_text_hash": "h2",
+                "analysis_status": "ok",
+            },
+        ]
+
+    monkeypatch.setattr("app.analyzer.search_urls_detailed", boom)
+    monkeypatch.setattr("app.analyzer.fetch_and_analyze", fake_fetch)
+
+    async with async_session() as s:
+        s.add(UrlCacheV2(
+            url=url, object_name="Obj", keywords=key,
+            result_json=json.dumps([
+                {"analysis_status": "ok", "title": "old"},
+                {"analysis_status": "llm_failed", "title": "bad"},
+            ], ensure_ascii=False),
+            raw_text_hash="old",
+        ))
+        task = Task(
+            object_name="Obj", keywords="kw", search_engine="openserp",
+            status="pending", manual_urls=url, content_scope="all",
+        )
+        s.add(task)
+        await s.commit()
+        task_id = task.id
+
+    await run_analysis(task_id, "Obj", "kw", url, None, "openserp")
+    assert called["n"] == 1
+    async with async_session() as s:
+        rows = (await s.execute(select(Result).where(Result.task_id == task_id))).scalars().all()
+        assert len(rows) == 2
+        assert all(r.analysis_status == "ok" for r in rows)
+        cached = await s.get(UrlCacheV2, (url, "Obj", key))
+        assert cached is not None
+        payload = json.loads(cached.result_json)
+        assert all((u.get("analysis_status") or "ok") == "ok" for u in payload)
+
+
+@pytest.mark.asyncio
+async def test_use_cache_false_skips_good_cache(monkeypatch):
+    await init_db()
+    url = "https://cached.example/post"
+    key = _cache_keywords(["kw"])
+    called = {"n": 0}
+
+    async def boom(*args, **kwargs):
+        raise AssertionError("search should not run")
+
+    async def fake_fetch(u, object_name, keywords, title, llm_settings=None, client=None, **kwargs):
+        called["n"] += 1
+        return {
+            "url": u, "title": "fresh", "mentions_object": True, "has_keyword": False,
+            "keyword_found": None, "date_mentioned": None, "publication_date": None,
+            "author_location": None, "source_type": "ugc",
+            "content_kind": "personal_review", "excerpt": "новая цитата",
+            "impression": "новый смысл", "relevance_score": 0.7, "raw_text_hash": "h2",
+            "analysis_status": "ok",
+        }
+
+    monkeypatch.setattr("app.analyzer.search_urls_detailed", boom)
+    monkeypatch.setattr("app.analyzer.fetch_and_analyze", fake_fetch)
+
+    async with async_session() as s:
+        s.add(UrlCacheV2(
+            url=url, object_name="Obj", keywords=key,
+            result_json=json.dumps({
+                "analysis_status": "ok", "title": "from cache", "excerpt": "старая",
+            }, ensure_ascii=False),
+            raw_text_hash="old",
+        ))
+        task = Task(
+            object_name="Obj", keywords="kw", search_engine="openserp",
+            status="pending", manual_urls=url, content_scope="all", use_cache=False,
+        )
+        s.add(task)
+        await s.commit()
+        task_id = task.id
+
+    await run_analysis(task_id, "Obj", "kw", url, None, "openserp")
+    assert called["n"] == 1
+    async with async_session() as s:
+        rows = (await s.execute(select(Result).where(Result.task_id == task_id))).scalars().all()
+        assert len(rows) == 1
+        assert rows[0].excerpt == "новая цитата"
+
+

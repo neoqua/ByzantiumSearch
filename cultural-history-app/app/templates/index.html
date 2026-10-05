@@ -90,6 +90,11 @@
         </select>
     </label>
 
+    <label>
+        <input type="checkbox" id="skip-cache">
+        Не использовать кэш
+    </label>
+
     <button type="submit">Запустить анализ</button>
 </form>
 
@@ -222,6 +227,7 @@ document.getElementById('search-form').onsubmit = async function(e) {
         search_engine: document.getElementById('search-engine').value,
         content_scope: document.getElementById('content-scope').value,
         period_years: parseInt(document.getElementById('period-years').value, 10),
+        use_cache: !document.getElementById('skip-cache').checked,
     };
 
     const resp = await fetch('/api/search', {
