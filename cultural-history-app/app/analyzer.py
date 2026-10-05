@@ -1,7 +1,7 @@
 import asyncio
 import json
 import logging
-from typing import Dict, Any, Optional
+from typing import Any, Dict, List, Optional
 
 import httpx
 from sqlalchemy import select
@@ -101,7 +101,27 @@ _CACHEABLE_STATUSES = frozenset({"ok", "prefiltered", "disputed"})
 
 
 def _cache_keywords(keywords):
-    return ",".join(keywords) + "#kwv6"
+    return ",".join(keywords) + "#kwv7"
+
+
+def _as_units(payload) -> List[dict]:
+    if isinstance(payload, list):
+        return [u for u in payload if isinstance(u, dict)]
+    if isinstance(payload, dict):
+        return [payload]
+    return []
+
+
+def _should_cache_units(payload) -> bool:
+    return any(
+        (u.get("analysis_status") or "ok") in _CACHEABLE_STATUSES
+        for u in _as_units(payload)
+    )
+
+
+def _bump_total_for_units(entry: Dict[str, Any], n: int) -> None:
+    if n > 1:
+        entry["total"] = (entry.get("total") or 0) + (n - 1)
 
 
 def _dump_progress(entry: Dict[str, Any]) -> str:
@@ -234,25 +254,25 @@ async def _write_cache_and_result(
     entry: Dict[str, Any],
     counters: Dict[str, int],
     write_cache: bool,
-    cache_payload: Optional[dict] = None,
+    cache_payload=None,
 ) -> None:
     analysis_status = llm_data.get("analysis_status") or "ok"
     to_cache = cache_payload if cache_payload is not None else llm_data
-    cache_status = to_cache.get("analysis_status") or "ok"
-    if write_cache and cache_status in _CACHEABLE_STATUSES:
+    first_cached = _as_units(to_cache)[0] if _as_units(to_cache) else {}
+    if write_cache and _should_cache_units(to_cache):
         payload = json.dumps(to_cache, ensure_ascii=False)
         pk = (url, object_name, cache_keywords)
         cached = await session.get(UrlCacheV2, pk)
         if cached:
             cached.result_json = payload
-            cached.raw_text_hash = to_cache.get("raw_text_hash")
+            cached.raw_text_hash = first_cached.get("raw_text_hash")
         else:
             session.add(UrlCacheV2(
                 url=url,
                 object_name=object_name,
                 keywords=cache_keywords,
                 result_json=payload,
-                raw_text_hash=to_cache.get("raw_text_hash"),
+                raw_text_hash=first_cached.get("raw_text_hash"),
             ))
             try:
                 await session.flush()
@@ -262,7 +282,7 @@ async def _write_cache_and_result(
                 existing = await session.get(UrlCacheV2, pk)
                 if existing:
                     existing.result_json = payload
-                    existing.raw_text_hash = to_cache.get("raw_text_hash")
+                    existing.raw_text_hash = first_cached.get("raw_text_hash")
 
     mentions = llm_data.get("mentions_object", False)
     has_kw = llm_data.get("has_keyword", False)
@@ -283,6 +303,8 @@ async def _write_cache_and_result(
         raw_text_hash=llm_data.get("raw_text_hash"),
         source_type=llm_data.get("source_type", "other"),
         content_kind=llm_data.get("content_kind"),
+        excerpt=llm_data.get("excerpt"),
+        impression=llm_data.get("impression"),
         analysis_status=analysis_status,
         date_source=llm_data.get("date_source"),
     ))
@@ -429,16 +451,23 @@ async def _execute_analysis(
                         UrlCacheV2, (url, object_name, cache_keywords)
                     )
                     if cached:
-                        llm_data = json.loads(cached.result_json) if cached.result_json else {}
-                        llm_data.setdefault("analysis_status", "ok")
-                        llm_data = overlay_filters(llm_data, content_scope, cutoff)
+                        units = _as_units(
+                            json.loads(cached.result_json) if cached.result_json else {}
+                        )
+                        if not units:
+                            units = [{}]
+                        _bump_total_for_units(entry, len(units))
                         from_cache = True
                         task = await session.get(Task, task_id)
-                        await _write_cache_and_result(
-                            session, task, task_id, url, title, object_name,
-                            cache_keywords, llm_data, entry, counters,
-                            write_cache=False,
-                        )
+                        for unit in units:
+                            unit.setdefault("analysis_status", "ok")
+                            overlayed = overlay_filters(unit, content_scope, cutoff)
+                            await _write_cache_and_result(
+                                session, task, task_id, url,
+                                overlayed.get("title") or title, object_name,
+                                cache_keywords, overlayed, entry, counters,
+                                write_cache=False,
+                            )
             if from_cache:
                 return
             if _wants_stop(task_id, entry):
@@ -452,15 +481,24 @@ async def _execute_analysis(
                     llm_settings=llm_settings, client=client,
                     content_scope=content_scope, period_cutoff=cutoff,
                 )
-                llm_data = overlay_filters(dict(raw), content_scope, cutoff)
+                units = _as_units(raw)
+                if not units:
+                    units = [_blank_analysis(url, title, "fetch_failed")]
+                overlayed_units = [
+                    overlay_filters(dict(u), content_scope, cutoff) for u in units
+                ]
             async with write_lock:
                 async with async_session() as session:
                     task = await session.get(Task, task_id)
-                    await _write_cache_and_result(
-                        session, task, task_id, url, title, object_name,
-                        cache_keywords, llm_data, entry, counters,
-                        write_cache=True, cache_payload=raw,
-                    )
+                    _bump_total_for_units(entry, len(overlayed_units))
+                    for i, llm_data in enumerate(overlayed_units):
+                        await _write_cache_and_result(
+                            session, task, task_id, url,
+                            llm_data.get("title") or title, object_name,
+                            cache_keywords, llm_data, entry, counters,
+                            write_cache=(i == 0),
+                            cache_payload=units if i == 0 else None,
+                        )
         except Exception:
             logger.exception("Failed processing %s", url)
             async with write_lock:

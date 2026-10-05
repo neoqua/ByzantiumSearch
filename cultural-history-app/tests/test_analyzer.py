@@ -1,3 +1,4 @@
+import json
 import os
 import tempfile
 import uuid
@@ -136,7 +137,7 @@ async def test_fetch_and_analyze_fetch_failed(monkeypatch):
         return None
 
     monkeypatch.setattr("app.scraper.fetch_page_bytes", no_bytes)
-    result = await fetch_and_analyze("https://x", "Obj", ["Византия"], "t")
+    result = (await fetch_and_analyze("https://x", "Obj", ["Византия"], "t"))[0]
     assert result["analysis_status"] == "fetch_failed"
     assert result["mentions_object"] is False
 
@@ -161,7 +162,7 @@ async def test_fetch_and_analyze_llm_failed_still_matches_keywords(monkeypatch):
 
     monkeypatch.setattr("app.scraper.fetch_page_bytes", page)
     monkeypatch.setattr("app.scraper.analyze_text_with_retry", llm_fail)
-    result = await fetch_and_analyze("https://x", "Obj", ["Византия"], "t")
+    result = (await fetch_and_analyze("https://x", "Obj", ["Византия"], "t"))[0]
     assert result["analysis_status"] == "llm_failed"
     assert result["has_keyword"] is True
     assert "византию" in (result["keyword_found"] or "")
@@ -191,14 +192,14 @@ async def test_fetch_and_analyze_prefers_page_date_over_llm(monkeypatch):
 
     monkeypatch.setattr("app.scraper.fetch_page_bytes", page)
     monkeypatch.setattr("app.scraper.analyze_text_with_retry", llm_ok)
-    result = await fetch_and_analyze("https://x", "Obj", ["Византия"], "t")
+    result = (await fetch_and_analyze("https://x", "Obj", ["Византия"], "t"))[0]
     assert result["publication_date"] == "15.03.2021"
     assert result["date_source"] == "page"
 
 
 def test_cache_key_bumped_for_status_change():
-    assert _cache_keywords(["a", "b"]).endswith("#kwv6")
-    assert "#kwv5" not in _cache_keywords(["a"])
+    assert _cache_keywords(["a", "b"]).endswith("#kwv7")
+    assert "#kwv6" not in _cache_keywords(["a"])
 
 
 @pytest.mark.asyncio
@@ -505,5 +506,83 @@ async def test_search_phase_is_written_to_progress(monkeypatch):
     assert captured["live"]["urls_found"] == 4
     assert captured["db"]["phase"] == "search"
     assert captured["db"]["search_backend"] == "openserp"
+
+
+@pytest.mark.asyncio
+async def test_run_analysis_one_result_per_review(monkeypatch):
+    await init_db()
+
+    async def boom(*args, **kwargs):
+        raise AssertionError("search should not run")
+
+    async def fake_fetch(url, object_name, keywords, title, llm_settings=None, client=None, **kwargs):
+        return [
+            {
+                "url": url,
+                "title": "Отзыв 1",
+                "mentions_object": True,
+                "has_keyword": True,
+                "keyword_found": "Византия",
+                "date_mentioned": None,
+                "publication_date": "01.06.2024",
+                "author_location": None,
+                "source_type": "ugc",
+                "content_kind": "personal_review",
+                "excerpt": "Пещеры произвели сильное впечатление",
+                "impression": "Понравились пещеры",
+                "relevance_score": 1.0,
+                "raw_text_hash": "h1",
+                "analysis_status": "ok",
+                "date_source": "page",
+            },
+            {
+                "url": url,
+                "title": "Отзыв 2",
+                "mentions_object": True,
+                "has_keyword": False,
+                "keyword_found": None,
+                "date_mentioned": None,
+                "publication_date": "10.01.2023",
+                "author_location": None,
+                "source_type": "ugc",
+                "content_kind": "personal_review",
+                "excerpt": "Фрески стоит увидеть",
+                "impression": "Хвалит фрески",
+                "relevance_score": 0.7,
+                "raw_text_hash": "h2",
+                "analysis_status": "ok",
+                "date_source": "page",
+            },
+        ]
+
+    monkeypatch.setattr("app.analyzer.search_urls_detailed", boom)
+    monkeypatch.setattr("app.analyzer.fetch_and_analyze", fake_fetch)
+
+    async with async_session() as s:
+        task = Task(
+            object_name="Obj", keywords="kw", search_engine="openserp",
+            status="pending", manual_urls="https://otzyv.example/list",
+            content_scope="all",
+        )
+        s.add(task)
+        await s.commit()
+        task_id = task.id
+
+    await run_analysis(task_id, "Obj", "kw", "https://otzyv.example/list", None, "openserp")
+
+    async with async_session() as s:
+        rows = (await s.execute(select(Result).where(Result.task_id == task_id))).scalars().all()
+        assert len(rows) == 2
+        assert {r.excerpt for r in rows} == {
+            "Пещеры произвели сильное впечатление",
+            "Фрески стоит увидеть",
+        }
+        cached = await s.get(
+            UrlCacheV2, ("https://otzyv.example/list", "Obj", _cache_keywords(["kw"]))
+        )
+        assert cached is not None
+        payload = json.loads(cached.result_json)
+        assert isinstance(payload, list)
+        assert len(payload) == 2
 
 

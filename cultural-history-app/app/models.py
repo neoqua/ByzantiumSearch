@@ -56,6 +56,8 @@ class Result(Base):
     analysis_status = Column(String, nullable=False, default="ok")
     date_source = Column(String, nullable=True)
     content_kind = Column(String, nullable=True)
+    excerpt = Column(Text, nullable=True)
+    impression = Column(Text, nullable=True)
     relevance_score = Column(Float, default=0.0)
     raw_text_hash = Column(String, nullable=True)
     created_at = Column(DateTime, default=utcnow)

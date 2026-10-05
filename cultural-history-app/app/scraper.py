@@ -18,6 +18,7 @@ from app.fields import (
     coerce_content_kind,
     date_in_period,
 )
+from app.reviews import extract_reviews, grounded_excerpt
 from app.schemas import LLMSettings
 
 logger = logging.getLogger(__name__)
@@ -61,6 +62,8 @@ def _blank_analysis(url: str, title: str, status: str) -> dict:
         "author_location": None,
         "source_type": heuristic_source_type(url, title),
         "content_kind": classify_content_kind(url, title),
+        "excerpt": None,
+        "impression": None,
         "relevance_score": 0.0,
         "raw_text_hash": None,
         "analysis_status": status,
@@ -112,33 +115,60 @@ async def fetch_and_analyze(
     client: Optional[httpx.AsyncClient] = None,
     content_scope: str = "all",
     period_cutoff: Optional[datetime] = None,
-) -> dict:
+) -> list[dict]:
     raw = await fetch_page_bytes(url, client=client)
     if not raw:
-        return _blank_analysis(url, title, "fetch_failed")
-    text = extract_text(raw) or None
-    if not text:
-        return _blank_analysis(url, title, "fetch_failed")
-    h = text_hash(text)
+        return [_blank_analysis(url, title, "fetch_failed")]
+    page_text = extract_text(raw) or ""
+    units = extract_reviews(raw, page_text)
+    if not units:
+        return [_blank_analysis(url, title, "fetch_failed")]
     page_date = extract_publication_date(raw)
+    source_type = heuristic_source_type(url, title)
+    results = []
+    for unit in units:
+        results.append(await _analyze_unit(
+            url, object_name, keywords, title, unit, page_date, source_type,
+            content_scope, period_cutoff, llm_settings,
+        ))
+    return results
+
+
+async def _analyze_unit(
+    url: str,
+    object_name: str,
+    keywords: list[str],
+    page_title: str,
+    unit: dict,
+    page_date: Optional[str],
+    source_type: str,
+    content_scope: str,
+    period_cutoff: Optional[datetime],
+    llm_settings: Optional[LLMSettings],
+) -> dict:
+    text = unit.get("text") or ""
+    title = unit.get("title") or page_title
+    h = text_hash(text)
     blob = f"{title or ''} {text}"
     matched_kw, matched_forms = match_keywords(blob, keywords)
     has_kw = bool(matched_kw)
     obj_hit = object_in_text(blob, object_name)
-    source_type = heuristic_source_type(url, title)
     keyword_found = ", ".join(matched_forms) if matched_forms else None
     kind = classify_content_kind(url, title, text)
+    unit_date = unit.get("date") or page_date
 
-    def pack(status: str, mentions: bool, location, dates, extra_kind=None):
+    def pack(status: str, mentions: bool, location, dates, extra_kind=None, excerpt=None, impression=None):
         return {
             "url": url,
             "title": title,
             "mentions_object": mentions,
             "has_keyword": has_kw,
             "keyword_found": keyword_found,
-            "author_location": location,
+            "author_location": location or unit.get("author"),
             "source_type": source_type,
             "content_kind": extra_kind or kind,
+            "excerpt": excerpt,
+            "impression": impression,
             "relevance_score": relevance_score(mentions, has_kw, url, title),
             "raw_text_hash": h,
             "analysis_status": status,
@@ -146,13 +176,13 @@ async def fetch_and_analyze(
         }
 
     if not obj_hit and not has_kw:
-        return pack("prefiltered", False, None, finalize_dates(page_date, None, None))
+        return pack("prefiltered", False, None, finalize_dates(unit_date, None, None))
 
-    if period_cutoff is not None and date_in_period(page_date, period_cutoff) is False:
-        return pack("out_of_period", False, None, finalize_dates(page_date, None, None))
+    if period_cutoff is not None and date_in_period(unit_date, period_cutoff) is False:
+        return pack("out_of_period", False, None, finalize_dates(unit_date, None, None))
 
     if content_scope == "personal" and kind in ("description", "promo"):
-        return pack("not_personal", False, None, finalize_dates(page_date, None, None))
+        return pack("not_personal", False, None, finalize_dates(unit_date, None, None))
 
     llm_result = await analyze_text_with_retry(
         object_name, keywords, title, text, llm_settings=llm_settings
@@ -166,13 +196,29 @@ async def fetch_and_analyze(
     location = llm_result.get("author_location") if status == "ok" else None
     if location:
         location = grounded_location(str(location), blob)
+    if not location:
+        location = unit.get("author")
 
     if kind == "other" and status == "ok":
         kind = coerce_content_kind(llm_result.get("content_kind"))
 
+    excerpt = None
+    impression = None
+    if status in ("ok", "disputed"):
+        excerpt = grounded_excerpt(
+            llm_result.get("excerpt") if status == "ok" else None,
+            text, object_name, keywords,
+        )
+        raw_imp = llm_result.get("impression") if status == "ok" else None
+        if isinstance(raw_imp, str) and raw_imp.strip():
+            impression = raw_imp.strip()[:280]
+
     dates = finalize_dates(
-        page_date,
+        unit_date if unit.get("date") else page_date,
         llm_result.get("publication_date") if status == "ok" else None,
         llm_result.get("date_mentioned") if status in ("ok", "disputed") else None,
     )
-    return pack(status, mentions, location, dates, extra_kind=kind)
+    if unit.get("date"):
+        dates["publication_date"] = unit["date"]
+        dates["date_source"] = dates.get("date_source") or "page"
+    return pack(status, mentions, location, dates, extra_kind=kind, excerpt=excerpt, impression=impression)

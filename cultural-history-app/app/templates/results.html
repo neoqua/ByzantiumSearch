@@ -4,6 +4,7 @@
 <style>
     body { max-width: none; }
     .container { width: fit-content; min-width: 100%; }
+    td.quote { max-width: 28em; white-space: normal; }
 </style>
 
 {% if error %}
@@ -31,11 +32,11 @@
 <div>
     <div class="stat">
         <div class="stat-value">{{ report.total_mentions }}</div>
-        <div class="stat-label">Упоминаний объекта<br><span class="hint">из {{ report.analyzed_count }} разобранных страниц</span></div>
+        <div class="stat-label">Упоминаний объекта<br><span class="hint">из {{ report.analyzed_count }} разобранных отзывов</span></div>
     </div>
     <div class="stat">
         <div class="stat-value">{{ report.urls_processed }}</div>
-        <div class="stat-label">URL обработано</div>
+        <div class="stat-label">Отзывов обработано</div>
     </div>
     <div class="stat">
         <div class="stat-value">{{ report.mentions_with_keyword }}</div>
@@ -102,6 +103,8 @@
             <th>#</th>
             <th>URL</th>
             <th>Заголовок</th>
+            <th>Цитата</th>
+            <th>Смысл</th>
             <th>Источник <span class="hint">(по адресу страницы)</span></th>
             <th>Тип текста</th>
             <th>Ключевое слово</th>
@@ -119,6 +122,8 @@
             <td>{{ loop.index }}</td>
             <td><a href="{{ r.url }}" target="_blank">{{ r.url[:50] }}...</a></td>
             <td>{{ r.title or '—' }}</td>
+            <td class="quote">{{ r.excerpt or '—' }}</td>
+            <td class="quote">{{ r.impression or '—' }}</td>
             <td>{{ r.source_type_label or r.source_type or '—' }}</td>
             <td>{{ r.content_kind_label or '—' }}</td>
             <td>{{ r.keyword_found or '—' }}</td>

@@ -88,6 +88,8 @@ def test_build_prompt_excludes_source_type_and_relevance():
     assert "source_type" not in prompt
     assert "relevance_score" not in prompt
     assert "content_kind" in prompt
+    assert "excerpt" in prompt
+    assert "impression" in prompt
     assert "blog/forum/social" not in prompt
 
 

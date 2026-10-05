@@ -13,10 +13,10 @@ logger = logging.getLogger(__name__)
 def _build_prompt(object_name: str, keywords: list[str], title: str, text: str) -> str:
     keywords_str = ", ".join(keywords)
     return (
-        f'Проанализируй текст ниже. Определи, упоминается ли "{object_name}", '
-        f"извлеки даты и местоположение автора.\n\n"
+        f'Проанализируй один отзыв или фрагмент текста. Определи, упоминается ли "{object_name}", '
+        f"извлеки даты, место автора и коротко смысл отзыва.\n\n"
         f"Объект: {object_name}\n"
-        f"Ключевые слова (для контекста релевантности): {keywords_str}\n\n"
+        f"Ключевые слова (для контекста): {keywords_str}\n\n"
         f"Заголовок: {title}\n\n"
         f"Текст: {text[: settings.llm_text_limit]}\n\n"
         "Ответ ТОЛЬКО в формате JSON:\n"
@@ -24,9 +24,11 @@ def _build_prompt(object_name: str, keywords: list[str], title: str, text: str) 
         '  "mentions_object": true/false,\n'
         '  "object_name": "название из текста или null",\n'
         '  "date_mentioned": "ДД.ММ.ГГГГ события/визита из текста или null",\n'
-        '  "publication_date": "ДД.ММ.ГГГГ публикации страницы или null",\n'
+        '  "publication_date": "ДД.ММ.ГГГГ публикации отзыва или null",\n'
         '  "author_location": "город/регион автора, только если явно есть в тексте, иначе null",\n'
-        '  "content_kind": "personal_review/description/promo/other"\n'
+        '  "content_kind": "personal_review/description/promo/other",\n'
+        '  "excerpt": "1-2 предложения цитаты из текста про объект",\n'
+        '  "impression": "о чём отзыв, одно предложение"\n'
         "}"
     )
 
@@ -74,6 +76,8 @@ def _coerce_result(data: dict) -> dict:
         "date_mentioned",
         "publication_date",
         "author_location",
+        "excerpt",
+        "impression",
     ):
         result[key] = _to_str_or_none(result.get(key))
     return result

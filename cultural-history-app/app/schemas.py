@@ -54,6 +54,8 @@ class AnalysisResult(BaseModel):
     date_source: Optional[str] = None
     content_kind: Optional[str] = None
     content_kind_label: Optional[str] = None
+    excerpt: Optional[str] = None
+    impression: Optional[str] = None
     relevance_score: float = 0.0
 
 

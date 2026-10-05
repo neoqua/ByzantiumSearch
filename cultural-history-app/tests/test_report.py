@@ -46,7 +46,8 @@ def test_format_search_engine_fallback_label():
 def test_total_mentions_counts_only_ok_object_hits():
     rows = [
         Result(task_id="t", url="https://a", mentions_object=True, has_keyword=True,
-               analysis_status="ok", source_type="blog"),
+               analysis_status="ok", source_type="blog",
+               excerpt="цитата из отзыва", impression="краткое впечатление"),
         Result(task_id="t", url="https://b", mentions_object=False, has_keyword=False,
                analysis_status="ok", source_type="other"),
         Result(task_id="t", url="https://c", mentions_object=False, has_keyword=False,
@@ -66,6 +67,8 @@ def test_total_mentions_counts_only_ok_object_hits():
     assert report.prefiltered_count == 0
     assert report.disputed_count == 0
     assert report.search_engine_label == "searxng"
+    assert report.results[0].excerpt == "цитата из отзыва"
+    assert report.results[0].impression == "краткое впечатление"
 
 
 def test_report_label_shows_fallback():
@@ -142,6 +145,8 @@ def test_csv_includes_mentions_and_status():
     )
     csv_text = report_to_csv(report)
     assert csv_text.startswith("\ufeff")
+    assert "Цитата" in csv_text
+    assert "Смысл" in csv_text
     assert "Упоминает объект" in csv_text
     assert "Дата публикации" in csv_text
     assert "Дата упоминания" in csv_text

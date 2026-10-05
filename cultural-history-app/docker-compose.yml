@@ -36,7 +36,7 @@ services:
       - OPENSERP_RESULTS_LIMIT=15
       - DATABASE_URL=sqlite+aiosqlite:///./data/app.db
       - SCRAPER_VERIFY_SSL=false
-      - LLM_TEXT_LIMIT=3000
+      - LLM_TEXT_LIMIT=8000
       - FETCH_CONCURRENCY=3
       - YANDEX_FOLDER_ID=${YANDEX_FOLDER_ID:-}
       - YANDEX_API_KEY=${YANDEX_API_KEY:-}

@@ -50,7 +50,7 @@ class Settings:
         default_factory=lambda: _read_bool(os.getenv("SCRAPER_VERIFY_SSL"), False)
     )
     llm_text_limit: int = field(
-        default_factory=lambda: max(1, int(os.getenv("LLM_TEXT_LIMIT", "3000")))
+        default_factory=lambda: max(1, int(os.getenv("LLM_TEXT_LIMIT", "8000")))
     )
     fetch_concurrency: int = field(
         default_factory=lambda: max(1, int(os.getenv("FETCH_CONCURRENCY", "3")))

@@ -68,9 +68,9 @@ async def test_prefilter_skips_llm(monkeypatch):
 
     monkeypatch.setattr("app.scraper.fetch_page_bytes", page)
     monkeypatch.setattr("app.scraper.analyze_text_with_retry", llm)
-    result = await fetch_and_analyze(
+    result = (await fetch_and_analyze(
         "https://news.example/weather", "Климентовский монастырь", ["Византия"], "Погода"
-    )
+    ))[0]
     assert result["analysis_status"] == "prefiltered"
     assert result["mentions_object"] is False
     assert result["has_keyword"] is False
@@ -96,12 +96,12 @@ async def test_title_with_object_does_not_prefilter(monkeypatch):
 
     monkeypatch.setattr("app.scraper.fetch_page_bytes", page)
     monkeypatch.setattr("app.scraper.analyze_text_with_retry", llm)
-    result = await fetch_and_analyze(
+    result = (await fetch_and_analyze(
         "https://vk.com/wall-1",
         "Климентовский монастырь",
         ["Византия"],
         "Свято-Климентовский монастырь в Инкермане",
-    )
+    ))[0]
     assert called["llm"] == 1
     assert result["analysis_status"] == "ok"
     assert result["mentions_object"] is True
@@ -123,9 +123,9 @@ async def test_disputed_when_object_stem_but_llm_says_no(monkeypatch):
 
     monkeypatch.setattr("app.scraper.fetch_page_bytes", page)
     monkeypatch.setattr("app.scraper.analyze_text_with_retry", llm)
-    result = await fetch_and_analyze(
+    result = (await fetch_and_analyze(
         "https://otzyv.ru/post", "Климентовский монастырь", ["Византия"], "Отзыв"
-    )
+    ))[0]
     assert result["analysis_status"] == "disputed"
     assert result["mentions_object"] is False
     assert result["date_mentioned"] == "01.06.2024"
@@ -149,9 +149,9 @@ async def test_geo_dropped_if_not_on_page(monkeypatch):
 
     monkeypatch.setattr("app.scraper.fetch_page_bytes", page)
     monkeypatch.setattr("app.scraper.analyze_text_with_retry", llm)
-    result = await fetch_and_analyze(
+    result = (await fetch_and_analyze(
         "https://museum.example/x", "Климентовский монастырь", ["Византия"], "Статья"
-    )
+    ))[0]
     assert result["analysis_status"] == "ok"
     assert result["mentions_object"] is True
     assert result["author_location"] is None

@@ -25,6 +25,7 @@ async def init_db():
         await conn.run_sync(_ensure_results_date_source)
         await conn.run_sync(_ensure_tasks_content_filters)
         await conn.run_sync(_ensure_results_content_kind)
+        await conn.run_sync(_ensure_results_review_fields)
 
 
 def _ensure_column(sync_conn, table, column, ddl):
@@ -89,3 +90,10 @@ def _ensure_tasks_content_filters(sync_conn):
 def _ensure_results_content_kind(sync_conn):
     _ensure_column(sync_conn, "results", "content_kind",
                    "ALTER TABLE results ADD COLUMN content_kind VARCHAR(20)")
+
+
+def _ensure_results_review_fields(sync_conn):
+    _ensure_column(sync_conn, "results", "excerpt",
+                   "ALTER TABLE results ADD COLUMN excerpt TEXT")
+    _ensure_column(sync_conn, "results", "impression",
+                   "ALTER TABLE results ADD COLUMN impression TEXT")

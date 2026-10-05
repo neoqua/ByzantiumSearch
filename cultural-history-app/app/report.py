@@ -97,6 +97,8 @@ async def build_report(task_id: str, session: AsyncSession) -> Optional[ReportDa
             date_source=getattr(r, "date_source", None),
             content_kind=getattr(r, "content_kind", None),
             content_kind_label=format_content_kind(getattr(r, "content_kind", None) or ""),
+            excerpt=getattr(r, "excerpt", None),
+            impression=getattr(r, "impression", None),
         )
         for r in result_rows
     ]
@@ -140,9 +142,9 @@ def report_to_csv(report: ReportData) -> str:
     buf = io.StringIO()
     writer = csv.writer(buf, delimiter=";", lineterminator="\r\n")
     writer.writerow([
-        "№", "URL", "Заголовок", "Источник", "Тип текста", "Ключевые слова",
-        "Дата публикации", "Источник даты публикации", "Дата упоминания",
-        "Геопривязка", "Релевантность", "Упоминает объект", "Статус",
+        "№", "URL", "Заголовок", "Цитата", "Смысл", "Источник", "Тип текста",
+        "Ключевые слова", "Дата публикации", "Источник даты публикации",
+        "Дата упоминания", "Геопривязка", "Релевантность", "Упоминает объект", "Статус",
     ])
     for i, r in enumerate(report.results, 1):
         mentions_val = "да" if r.mentions_object else "нет"
@@ -151,6 +153,8 @@ def report_to_csv(report: ReportData) -> str:
             i,
             r.url,
             r.title or "",
+            r.excerpt or "",
+            r.impression or "",
             r.source_type_label or r.source_type or "",
             r.content_kind_label or r.content_kind or "",
             r.keyword_found or "",
