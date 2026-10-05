@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models import Task, Result
 from app.schemas import ReportData, AnalysisResult
 from app.source_type import format_source_mix
-from app.fields import format_source_type
+from app.fields import format_source_type, format_content_kind, period_label
 
 
 _DATE_SOURCE_LABEL = {
@@ -21,6 +21,9 @@ _STATUS_CSV = {
     "llm_failed": "LLM не ответил",
     "prefiltered": "без объекта и ключа",
     "disputed": "спорное упоминание",
+    "out_of_period": "вне периода",
+    "not_personal": "не личный отзыв",
+    "undated": "дата неизвестна",
 }
 
 _COUNTED_STATUSES = frozenset({"ok", "prefiltered", "disputed"})
@@ -65,6 +68,9 @@ async def build_report(task_id: str, session: AsyncSession) -> Optional[ReportDa
     llm_failed = sum(1 for r in result_rows if (r.analysis_status or "ok") == "llm_failed")
     prefiltered = sum(1 for r in result_rows if (r.analysis_status or "ok") == "prefiltered")
     disputed = sum(1 for r in result_rows if (r.analysis_status or "ok") == "disputed")
+    out_of_period = sum(1 for r in result_rows if (r.analysis_status or "ok") == "out_of_period")
+    not_personal = sum(1 for r in result_rows if (r.analysis_status or "ok") == "not_personal")
+    undated = sum(1 for r in result_rows if (r.analysis_status or "ok") == "undated")
     analyzed_count = sum(
         1 for r in result_rows if (r.analysis_status or "ok") in _COUNTED_STATUSES
     )
@@ -89,6 +95,8 @@ async def build_report(task_id: str, session: AsyncSession) -> Optional[ReportDa
             source_type_label=format_source_type(r.source_type),
             analysis_status=r.analysis_status or "ok",
             date_source=getattr(r, "date_source", None),
+            content_kind=getattr(r, "content_kind", None),
+            content_kind_label=format_content_kind(getattr(r, "content_kind", None) or ""),
         )
         for r in result_rows
     ]
@@ -112,6 +120,12 @@ async def build_report(task_id: str, session: AsyncSession) -> Optional[ReportDa
         prefiltered_count=prefiltered,
         disputed_count=disputed,
         analyzed_count=analyzed_count,
+        out_of_period_count=out_of_period,
+        not_personal_count=not_personal,
+        undated_count=undated,
+        content_scope=getattr(task, "content_scope", None) or "all",
+        period_years=getattr(task, "period_years", None),
+        period_label=period_label(getattr(task, "period_years", None)),
         results=results_list,
         status=task.status,
         search_engine=requested,
@@ -126,7 +140,7 @@ def report_to_csv(report: ReportData) -> str:
     buf = io.StringIO()
     writer = csv.writer(buf, delimiter=";", lineterminator="\r\n")
     writer.writerow([
-        "№", "URL", "Заголовок", "Источник", "Ключевые слова",
+        "№", "URL", "Заголовок", "Источник", "Тип текста", "Ключевые слова",
         "Дата публикации", "Источник даты публикации", "Дата упоминания",
         "Геопривязка", "Релевантность", "Упоминает объект", "Статус",
     ])
@@ -138,6 +152,7 @@ def report_to_csv(report: ReportData) -> str:
             r.url,
             r.title or "",
             r.source_type_label or r.source_type or "",
+            r.content_kind_label or r.content_kind or "",
             r.keyword_found or "",
             r.publication_date or "",
             format_date_source(r.date_source),

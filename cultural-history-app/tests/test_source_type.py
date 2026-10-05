@@ -1,6 +1,7 @@
 from app.source_type import (
     classify_source, SOURCE_PRIORITY, TRAVEL_BLOG_DOMAINS,
     is_travel_blog_host, count_source_mix, format_source_mix,
+    keep_url_for_personal_scope,
 )
 
 
@@ -74,3 +75,16 @@ def test_source_mix_counts_and_label():
     label = format_source_mix(mix)
     assert "блоги и отзывы: 2" in label
     assert "тревел-площадки: 1" in label
+
+
+def test_keep_url_for_personal_scope():
+    assert keep_url_for_personal_scope(
+        {"url": "https://otzovik.com/x", "title": "Отзыв", "source_type": "ugc"}
+    )
+    assert not keep_url_for_personal_scope(
+        {"url": "https://x.gov.ru/", "title": "Официальный сайт", "source_type": "official"}
+    )
+    assert keep_url_for_personal_scope(
+        {"url": "https://x.gov.ru/", "title": "Официальный сайт", "source_type": "official"},
+        manual_urls=["https://x.gov.ru/"],
+    )

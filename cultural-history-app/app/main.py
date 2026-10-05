@@ -15,6 +15,7 @@ from app.config import settings
 from app.database import get_db, init_db, async_session
 from app.models import Task
 from app.schemas import SearchRequest, LLMSettings
+from app.fields import period_cutoff, cutoff_iso
 from app.analyzer import (
     run_analysis,
     get_progress,
@@ -80,12 +81,16 @@ async def api_search(
     background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
 ):
+    cutoff = period_cutoff(body.period_years)
     task = Task(
         object_name=body.object_name,
         keywords=body.keywords,
         annual_visitors=body.annual_visitors,
         manual_urls=body.manual_urls,
         search_engine=body.search_engine,
+        content_scope=body.content_scope,
+        period_years=body.period_years or None,
+        period_cutoff=cutoff_iso(cutoff),
         status="pending",
     )
     db.add(task)

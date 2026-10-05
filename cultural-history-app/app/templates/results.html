@@ -22,6 +22,8 @@
 <p><strong>Объект:</strong> {{ report.object_name }}</p>
 <p><strong>Ключевые слова:</strong> {{ report.keywords }}</p>
 <p><strong>Поисковый движок:</strong> {{ report.search_engine_label or report.search_engine or 'searxng' }}</p>
+<p><strong>Источники:</strong> {% if report.content_scope == 'personal' %}только личные отзывы{% else %}все источники{% endif %}</p>
+<p><strong>Период публикаций:</strong> {{ report.period_label }}</p>
 {% if report.source_mix_label %}
 <p><strong>Выдача поиска:</strong> {{ report.source_mix_label }}</p>
 {% endif %}
@@ -67,6 +69,24 @@
         <div class="stat-label">Спорных упоминаний<br><span class="hint">стебель объекта есть, модель сказала нет</span></div>
     </div>
     {% endif %}
+    {% if report.undated_count %}
+    <div class="stat">
+        <div class="stat-value">{{ report.undated_count }}</div>
+        <div class="stat-label">Без даты публикации<br><span class="hint">не входят в период</span></div>
+    </div>
+    {% endif %}
+    {% if report.out_of_period_count %}
+    <div class="stat">
+        <div class="stat-value">{{ report.out_of_period_count }}</div>
+        <div class="stat-label">Вне выбранного периода</div>
+    </div>
+    {% endif %}
+    {% if report.not_personal_count %}
+    <div class="stat">
+        <div class="stat-value">{{ report.not_personal_count }}</div>
+        <div class="stat-label">Не личный отзыв</div>
+    </div>
+    {% endif %}
     {% if report.annual_visitors %}
     <div class="stat">
         <div class="stat-value">{{ report.annual_visitors }}</div>
@@ -83,6 +103,7 @@
             <th>URL</th>
             <th>Заголовок</th>
             <th>Источник <span class="hint">(по адресу страницы)</span></th>
+            <th>Тип текста</th>
             <th>Ключевое слово</th>
             <th>Дата публикации</th>
             <th>Дата упоминания</th>
@@ -94,22 +115,26 @@
     </thead>
     <tbody>
         {% for r in report.results %}
-        <tr{% if r.analysis_status in ('fetch_failed', 'llm_failed', 'disputed') %} class="row-failed"{% endif %}>
+        <tr{% if r.analysis_status in ('fetch_failed', 'llm_failed', 'disputed', 'out_of_period', 'not_personal') %} class="row-failed"{% endif %}>
             <td>{{ loop.index }}</td>
             <td><a href="{{ r.url }}" target="_blank">{{ r.url[:50] }}...</a></td>
             <td>{{ r.title or '—' }}</td>
             <td>{{ r.source_type_label or r.source_type or '—' }}</td>
+            <td>{{ r.content_kind_label or '—' }}</td>
             <td>{{ r.keyword_found or '—' }}</td>
             <td>{{ r.publication_date or '—' }}{% if r.date_source %}<br><span class="hint">{% if r.date_source == 'page' %}со страницы{% elif r.date_source == 'llm' %}из модели{% endif %}</span>{% endif %}</td>
             <td>{{ r.date_mentioned or '—' }}</td>
             <td>{{ r.author_location or '—' }}</td>
             <td>{{ r.relevance_score }}</td>
-            <td>{% if r.analysis_status not in ('ok', 'prefiltered', 'disputed') %}—{% elif r.mentions_object %}да{% else %}нет{% endif %}</td>
+            <td>{% if r.analysis_status not in ('ok', 'prefiltered', 'disputed', 'undated') %}—{% elif r.mentions_object %}да{% else %}нет{% endif %}</td>
             <td>
                 {% if r.analysis_status == 'fetch_failed' %}не скачано
                 {% elif r.analysis_status == 'llm_failed' %}LLM не ответил
                 {% elif r.analysis_status == 'prefiltered' %}без объекта и ключа
                 {% elif r.analysis_status == 'disputed' %}спорное упоминание
+                {% elif r.analysis_status == 'out_of_period' %}вне периода
+                {% elif r.analysis_status == 'not_personal' %}не личный отзыв
+                {% elif r.analysis_status == 'undated' %}дата неизвестна
                 {% else %}ок{% endif %}
             </td>
         </tr>

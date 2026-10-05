@@ -4,7 +4,8 @@ from typing import Any, Awaitable, Callable, Dict, List, Optional
 import httpx
 from app.config import settings
 from app.source_type import (
-    classify_source, SOURCE_PRIORITY, UGC_QUERY_MARKERS, is_travel_blog_host,
+    classify_source, SOURCE_PRIORITY, UGC_QUERY_MARKERS, PERSONAL_QUERY_MARKERS,
+    is_travel_blog_host,
 )
 
 logger = logging.getLogger(__name__)
@@ -22,11 +23,16 @@ async def _notify_search_progress(
         await result
 
 
-def build_queries(object_name: str, keywords: List[str]) -> List[str]:
+def build_queries(
+    object_name: str,
+    keywords: List[str],
+    content_scope: str = "personal",
+) -> List[str]:
     queries = [object_name]
     for kw in keywords:
         queries.append(f"{object_name} {kw}")
-    for marker in UGC_QUERY_MARKERS:
+    markers = PERSONAL_QUERY_MARKERS if content_scope == "personal" else UGC_QUERY_MARKERS
+    for marker in markers:
         queries.append(f"{object_name} {marker}")
     return queries
 
@@ -52,8 +58,10 @@ async def _search_searxng(
     object_name: str,
     keywords: List[str],
     on_progress: OnSearchProgress = None,
+    content_scope: str = "personal",
+    period_years: Optional[int] = None,
 ) -> List[Dict[str, str]]:
-    queries = build_queries(object_name, keywords)
+    queries = build_queries(object_name, keywords, content_scope=content_scope)
     seen_urls: set = set()
     results: List[Dict[str, str]] = []
     n_queries = len(queries)
@@ -79,6 +87,8 @@ async def _search_searxng(
                         "categories": "general",
                         "pageno": page,
                     }
+                    if period_years == 1:
+                        params["time_range"] = "year"
                     resp = await client.get(
                         f"{settings.searxng_base_url}/search", params=params
                     )
@@ -105,8 +115,9 @@ async def _search_openserp(
     object_name: str,
     keywords: List[str],
     on_progress: OnSearchProgress = None,
+    content_scope: str = "personal",
 ) -> List[Dict[str, str]]:
-    queries = build_queries(object_name, keywords)
+    queries = build_queries(object_name, keywords, content_scope=content_scope)
     seen_urls: set = set()
     results: List[Dict[str, str]] = []
     n_queries = len(queries)
@@ -167,9 +178,12 @@ async def search_urls(
     keywords: List[str],
     engine: str = "searxng",
     on_progress: OnSearchProgress = None,
+    content_scope: str = "personal",
+    period_years: Optional[int] = None,
 ) -> List[Dict[str, str]]:
     results, _used, _fallback = await search_urls_detailed(
-        object_name, keywords, engine=engine, on_progress=on_progress
+        object_name, keywords, engine=engine, on_progress=on_progress,
+        content_scope=content_scope, period_years=period_years,
     )
     return results
 
@@ -179,11 +193,14 @@ async def search_urls_detailed(
     keywords: List[str],
     engine: str = "searxng",
     on_progress: OnSearchProgress = None,
+    content_scope: str = "personal",
+    period_years: Optional[int] = None,
 ) -> tuple:
     """Return (results, engine_used, fallback_from_searxng)."""
     if engine == "searxng":
         results = await _search_searxng(
-            object_name, keywords, on_progress=on_progress
+            object_name, keywords, on_progress=on_progress,
+            content_scope=content_scope, period_years=period_years,
         )
         if not results:
             logger.warning(
@@ -193,18 +210,20 @@ async def search_urls_detailed(
                 "engine": "openserp",
                 "query": "SearXNG пуст, переход на OpenSERP",
                 "index": 0,
-                "total": len(build_queries(object_name, keywords)),
+                "total": len(build_queries(object_name, keywords, content_scope=content_scope)),
                 "urls_found": 0,
             })
             results = await _search_openserp(
-                object_name, keywords, on_progress=on_progress
+                object_name, keywords, on_progress=on_progress,
+                content_scope=content_scope,
             )
             results.sort(key=_sort_key)
             return results, "openserp", True
         results.sort(key=_sort_key)
         return results, "searxng", False
     results = await _search_openserp(
-        object_name, keywords, on_progress=on_progress
+        object_name, keywords, on_progress=on_progress,
+        content_scope=content_scope,
     )
     results.sort(key=_sort_key)
     return results, "openserp", False

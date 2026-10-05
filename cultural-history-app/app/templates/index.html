@@ -66,6 +66,23 @@
         <span id="llm-test-result"></span>
     </details>
 
+    <label>Какие тексты искать
+        <select id="content-scope">
+            <option value="personal" selected>Только личные отзывы</option>
+            <option value="all">Все источники</option>
+        </select>
+    </label>
+
+    <label>Период публикаций
+        <select id="period-years">
+            <option value="1" selected>За последний год</option>
+            <option value="2">За 2 года</option>
+            <option value="3">За 3 года</option>
+            <option value="5">За 5 лет</option>
+            <option value="0">Без ограничения</option>
+        </select>
+    </label>
+
     <label>Поисковый движок
         <select id="search-engine">
             <option value="openserp" {% if default_search_engine == 'openserp' %}selected{% endif %}>OpenSERP</option>
@@ -203,6 +220,8 @@ document.getElementById('search-form').onsubmit = async function(e) {
         manual_urls: form.manual_urls.value || null,
         llm_settings: llmCollectSettings(),
         search_engine: document.getElementById('search-engine').value,
+        content_scope: document.getElementById('content-scope').value,
+        period_years: parseInt(document.getElementById('period-years').value, 10),
     };
 
     const resp = await fetch('/api/search', {

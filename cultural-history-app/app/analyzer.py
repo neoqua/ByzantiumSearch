@@ -12,8 +12,9 @@ from app.database import async_session
 from app.models import Task, Result, UrlCacheV2, utcnow
 from app.search import search_urls_detailed
 from app.scraper import fetch_and_analyze, make_http_client, _blank_analysis
-from app.source_type import classify_source, count_source_mix, is_travel_blog_host
+from app.source_type import classify_source, count_source_mix, is_travel_blog_host, keep_url_for_personal_scope
 from app.schemas import LLMSettings
+from app.fields import overlay_filters, parse_cutoff_iso
 
 logger = logging.getLogger(__name__)
 
@@ -100,7 +101,7 @@ _CACHEABLE_STATUSES = frozenset({"ok", "prefiltered", "disputed"})
 
 
 def _cache_keywords(keywords):
-    return ",".join(keywords) + "#kwv5"
+    return ",".join(keywords) + "#kwv6"
 
 
 def _dump_progress(entry: Dict[str, Any]) -> str:
@@ -233,22 +234,25 @@ async def _write_cache_and_result(
     entry: Dict[str, Any],
     counters: Dict[str, int],
     write_cache: bool,
+    cache_payload: Optional[dict] = None,
 ) -> None:
     analysis_status = llm_data.get("analysis_status") or "ok"
-    if write_cache and analysis_status in _CACHEABLE_STATUSES:
-        payload = json.dumps(llm_data, ensure_ascii=False)
+    to_cache = cache_payload if cache_payload is not None else llm_data
+    cache_status = to_cache.get("analysis_status") or "ok"
+    if write_cache and cache_status in _CACHEABLE_STATUSES:
+        payload = json.dumps(to_cache, ensure_ascii=False)
         pk = (url, object_name, cache_keywords)
         cached = await session.get(UrlCacheV2, pk)
         if cached:
             cached.result_json = payload
-            cached.raw_text_hash = llm_data.get("raw_text_hash")
+            cached.raw_text_hash = to_cache.get("raw_text_hash")
         else:
             session.add(UrlCacheV2(
                 url=url,
                 object_name=object_name,
                 keywords=cache_keywords,
                 result_json=payload,
-                raw_text_hash=llm_data.get("raw_text_hash"),
+                raw_text_hash=to_cache.get("raw_text_hash"),
             ))
             try:
                 await session.flush()
@@ -258,18 +262,18 @@ async def _write_cache_and_result(
                 existing = await session.get(UrlCacheV2, pk)
                 if existing:
                     existing.result_json = payload
-                    existing.raw_text_hash = llm_data.get("raw_text_hash")
+                    existing.raw_text_hash = to_cache.get("raw_text_hash")
 
     mentions = llm_data.get("mentions_object", False)
     has_kw = llm_data.get("has_keyword", False)
-    if has_kw and analysis_status in _CACHEABLE_STATUSES:
+    if has_kw and analysis_status in ("ok", "prefiltered", "disputed", "undated"):
         counters["found_keyword"] += 1
 
     session.add(Result(
         task_id=task_id,
         url=url,
         title=title,
-        mentions_object=mentions if analysis_status == "ok" else False,
+        mentions_object=mentions if analysis_status in ("ok", "undated") else False,
         has_keyword=has_kw if analysis_status != "fetch_failed" else False,
         keyword_found=llm_data.get("keyword_found"),
         date_mentioned=llm_data.get("date_mentioned"),
@@ -278,6 +282,7 @@ async def _write_cache_and_result(
         relevance_score=llm_data.get("relevance_score", 0.0),
         raw_text_hash=llm_data.get("raw_text_hash"),
         source_type=llm_data.get("source_type", "other"),
+        content_kind=llm_data.get("content_kind"),
         analysis_status=analysis_status,
         date_source=llm_data.get("date_source"),
     ))
@@ -330,6 +335,9 @@ async def _execute_analysis(
         task.error_message = None
         task.stop_requested = False
         task.progress_json = _dump_progress(entry)
+        content_scope = getattr(task, "content_scope", None) or "all"
+        period_years = getattr(task, "period_years", None)
+        cutoff = parse_cutoff_iso(getattr(task, "period_cutoff", None))
         await session.commit()
 
     all_urls = []
@@ -344,6 +352,8 @@ async def _execute_analysis(
         search_results, engine_used, _fallback = await search_urls_detailed(
             object_name, keywords, engine=search_engine,
             on_progress=on_search_progress,
+            content_scope=content_scope,
+            period_years=period_years,
         )
         all_urls.extend(search_results)
     except Exception as e:
@@ -376,8 +386,23 @@ async def _execute_analysis(
         await _mark_task_failed(task_id, msg)
         return
 
-    entry["total"] = len(all_urls)
     entry["source_mix"] = count_source_mix(all_urls)
+    if content_scope == "personal":
+        all_urls = [
+            item for item in all_urls
+            if keep_url_for_personal_scope(item, manual_urls)
+        ]
+        if not all_urls:
+            msg = (
+                "После отбора личных отзывов не осталось страниц. "
+                "Добавьте ссылки вручную или выберите «Все источники»."
+            )
+            if task_id in _progress_store:
+                _progress_store[task_id]["status"] = "failed"
+            await _mark_task_failed(task_id, msg)
+            return
+
+    entry["total"] = len(all_urls)
     entry["phase"] = "analyze"
     entry["urls_found"] = len(all_urls)
     async with async_session() as session:
@@ -406,6 +431,7 @@ async def _execute_analysis(
                     if cached:
                         llm_data = json.loads(cached.result_json) if cached.result_json else {}
                         llm_data.setdefault("analysis_status", "ok")
+                        llm_data = overlay_filters(llm_data, content_scope, cutoff)
                         from_cache = True
                         task = await session.get(Task, task_id)
                         await _write_cache_and_result(
@@ -421,17 +447,19 @@ async def _execute_analysis(
                 if _wants_stop(task_id, entry):
                     return
                 entry.update(current_url=url, current_title=title)
-                llm_data = await fetch_and_analyze(
+                raw = await fetch_and_analyze(
                     url, object_name, keywords, title,
                     llm_settings=llm_settings, client=client,
+                    content_scope=content_scope, period_cutoff=cutoff,
                 )
+                llm_data = overlay_filters(dict(raw), content_scope, cutoff)
             async with write_lock:
                 async with async_session() as session:
                     task = await session.get(Task, task_id)
                     await _write_cache_and_result(
                         session, task, task_id, url, title, object_name,
                         cache_keywords, llm_data, entry, counters,
-                        write_cache=True,
+                        write_cache=True, cache_payload=raw,
                     )
         except Exception:
             logger.exception("Failed processing %s", url)

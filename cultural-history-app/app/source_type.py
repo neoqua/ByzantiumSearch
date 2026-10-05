@@ -9,6 +9,10 @@ UGC_QUERY_MARKERS = [
     "путеводитель", "путешествие",
 ]
 
+PERSONAL_QUERY_MARKERS = [
+    "отзывы", "блог", "форум", "впечатления",
+]
+
 _UGC_DOMAIN_MARKERS = (
     "livejournal.com", "lj.ru", "otzovik.com", "irecommend.ru",
     "dzen.ru", "pikabu.ru", "tripadvisor.ru", "tripadvisor.com",
@@ -130,3 +134,13 @@ def format_source_mix(mix) -> str:
     if travel:
         text += f" (тревел-площадки: {travel})"
     return text
+
+
+def keep_url_for_personal_scope(item, manual_urls=None) -> bool:
+    url = (item or {}).get("url") or ""
+    if url and url in (manual_urls or ()):
+        return True
+    st = (item or {}).get("source_type") or classify_source(
+        url, (item or {}).get("title") or ""
+    )
+    return st not in ("official", "agency")

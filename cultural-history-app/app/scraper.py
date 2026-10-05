@@ -1,5 +1,6 @@
 import hashlib
 import logging
+from datetime import datetime
 from typing import Optional, Union
 import httpx
 from bs4 import BeautifulSoup
@@ -13,6 +14,9 @@ from app.fields import (
     relevance_score,
     heuristic_source_type,
     finalize_dates,
+    classify_content_kind,
+    coerce_content_kind,
+    date_in_period,
 )
 from app.schemas import LLMSettings
 
@@ -56,6 +60,7 @@ def _blank_analysis(url: str, title: str, status: str) -> dict:
         "keyword_found": None,
         "author_location": None,
         "source_type": heuristic_source_type(url, title),
+        "content_kind": classify_content_kind(url, title),
         "relevance_score": 0.0,
         "raw_text_hash": None,
         "analysis_status": status,
@@ -105,6 +110,8 @@ async def fetch_and_analyze(
     url: str, object_name: str, keywords: list[str], title: str,
     llm_settings: Optional[LLMSettings] = None,
     client: Optional[httpx.AsyncClient] = None,
+    content_scope: str = "all",
+    period_cutoff: Optional[datetime] = None,
 ) -> dict:
     raw = await fetch_page_bytes(url, client=client)
     if not raw:
@@ -120,22 +127,32 @@ async def fetch_and_analyze(
     obj_hit = object_in_text(blob, object_name)
     source_type = heuristic_source_type(url, title)
     keyword_found = ", ".join(matched_forms) if matched_forms else None
+    kind = classify_content_kind(url, title, text)
 
-    if not obj_hit and not has_kw:
-        dates = finalize_dates(page_date, None, None)
+    def pack(status: str, mentions: bool, location, dates, extra_kind=None):
         return {
             "url": url,
             "title": title,
-            "mentions_object": False,
-            "has_keyword": False,
-            "keyword_found": None,
-            "author_location": None,
+            "mentions_object": mentions,
+            "has_keyword": has_kw,
+            "keyword_found": keyword_found,
+            "author_location": location,
             "source_type": source_type,
-            "relevance_score": 0.0,
+            "content_kind": extra_kind or kind,
+            "relevance_score": relevance_score(mentions, has_kw, url, title),
             "raw_text_hash": h,
-            "analysis_status": "prefiltered",
+            "analysis_status": status,
             **dates,
         }
+
+    if not obj_hit and not has_kw:
+        return pack("prefiltered", False, None, finalize_dates(page_date, None, None))
+
+    if period_cutoff is not None and date_in_period(page_date, period_cutoff) is False:
+        return pack("out_of_period", False, None, finalize_dates(page_date, None, None))
+
+    if content_scope == "personal" and kind in ("description", "promo"):
+        return pack("not_personal", False, None, finalize_dates(page_date, None, None))
 
     llm_result = await analyze_text_with_retry(
         object_name, keywords, title, text, llm_settings=llm_settings
@@ -150,21 +167,12 @@ async def fetch_and_analyze(
     if location:
         location = grounded_location(str(location), blob)
 
+    if kind == "other" and status == "ok":
+        kind = coerce_content_kind(llm_result.get("content_kind"))
+
     dates = finalize_dates(
         page_date,
         llm_result.get("publication_date") if status == "ok" else None,
         llm_result.get("date_mentioned") if status in ("ok", "disputed") else None,
     )
-    return {
-        "url": url,
-        "title": title,
-        "mentions_object": mentions,
-        "has_keyword": has_kw,
-        "keyword_found": keyword_found,
-        "author_location": location,
-        "source_type": source_type,
-        "relevance_score": relevance_score(mentions, has_kw, url, title),
-        "raw_text_hash": h,
-        "analysis_status": status,
-        **dates,
-    }
+    return pack(status, mentions, location, dates, extra_kind=kind)

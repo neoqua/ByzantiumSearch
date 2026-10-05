@@ -157,3 +157,38 @@ async def test_geo_dropped_if_not_on_page(monkeypatch):
     assert result["author_location"] is None
     assert result["has_keyword"] is True
     assert result["relevance_score"] == 0.8
+
+
+def test_content_kind_and_period_overlay():
+    from app.fields import classify_content_kind, overlay_filters, date_in_period, period_cutoff
+    from datetime import datetime, timezone
+
+    assert classify_content_kind("https://otzovik.com/review/1", "Отзыв") == "personal_review"
+    assert classify_content_kind("https://ru.wikipedia.org/wiki/X", "Статья") == "description"
+    assert classify_content_kind("https://agency.example/", "Турагентство") == "promo"
+
+    cutoff = datetime(2025, 9, 1, tzinfo=timezone.utc)
+    assert date_in_period("15.10.2025", cutoff) is True
+    assert date_in_period("01.01.2024", cutoff) is False
+    assert date_in_period(None, cutoff) is None
+    assert period_cutoff(0) is None
+
+    row = overlay_filters(
+        {"analysis_status": "ok", "mentions_object": True, "content_kind": "description",
+         "publication_date": "01.10.2025", "relevance_score": 0.8},
+        "personal", cutoff,
+    )
+    assert row["analysis_status"] == "not_personal"
+    old = overlay_filters(
+        {"analysis_status": "ok", "mentions_object": True, "content_kind": "personal_review",
+         "publication_date": "01.01.2020", "relevance_score": 0.8},
+        "personal", cutoff,
+    )
+    assert old["analysis_status"] == "out_of_period"
+    undated = overlay_filters(
+        {"analysis_status": "ok", "mentions_object": True, "content_kind": "personal_review",
+         "publication_date": None, "relevance_score": 0.8},
+        "personal", cutoff,
+    )
+    assert undated["analysis_status"] == "undated"
+    assert undated["mentions_object"] is True

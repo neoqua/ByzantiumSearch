@@ -87,6 +87,7 @@ def test_build_prompt_excludes_source_type_and_relevance():
     prompt = _build_prompt("Test Monastery", ["Byzantium"], "Title", "Text")
     assert "source_type" not in prompt
     assert "relevance_score" not in prompt
+    assert "content_kind" in prompt
     assert "blog/forum/social" not in prompt
 
 

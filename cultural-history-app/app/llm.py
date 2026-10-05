@@ -4,6 +4,7 @@ from typing import Optional
 
 from app.config import settings
 from app.llm_providers import get_provider
+from app.fields import coerce_content_kind
 from app.schemas import LLMSettings
 
 logger = logging.getLogger(__name__)
@@ -24,7 +25,8 @@ def _build_prompt(object_name: str, keywords: list[str], title: str, text: str) 
         '  "object_name": "название из текста или null",\n'
         '  "date_mentioned": "ДД.ММ.ГГГГ события/визита из текста или null",\n'
         '  "publication_date": "ДД.ММ.ГГГГ публикации страницы или null",\n'
-        '  "author_location": "город/регион автора, только если явно есть в тексте, иначе null"\n'
+        '  "author_location": "город/регион автора, только если явно есть в тексте, иначе null",\n'
+        '  "content_kind": "personal_review/description/promo/other"\n'
         "}"
     )
 
@@ -66,6 +68,7 @@ def _coerce_result(data: dict) -> dict:
     if source_type not in allowed_source_types:
         source_type = "other"
     result["source_type"] = source_type
+    result["content_kind"] = coerce_content_kind(result.get("content_kind"))
     for key in (
         "keyword_found",
         "date_mentioned",
@@ -133,6 +136,7 @@ async def analyze_text_with_retry(
                     "author_location": None,
                     "relevance_score": 0.0,
                     "source_type": "other",
+                    "content_kind": "other",
                 })
                 failed["analysis_status"] = "llm_failed"
                 return failed

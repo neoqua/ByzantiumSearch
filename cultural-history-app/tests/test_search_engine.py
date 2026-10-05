@@ -14,7 +14,10 @@ def test_search_request_default_follows_settings(monkeypatch):
     assert SearchRequest(object_name="X", keywords="k").search_engine == "openserp"
 
 
-def test_search_request_accepts_both_engines():
+def test_search_request_defaults_content_filters():
+    r = SearchRequest(object_name="X", keywords="k")
+    assert r.content_scope == "personal"
+    assert r.period_years == 1
     assert SearchRequest(object_name="X", keywords="k", search_engine="openserp").search_engine == "openserp"
     assert SearchRequest(object_name="X", keywords="k", search_engine="searxng").search_engine == "searxng"
 

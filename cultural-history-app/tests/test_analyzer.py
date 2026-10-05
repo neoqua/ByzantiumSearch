@@ -47,7 +47,7 @@ async def test_search_error_with_manual_url_continues(monkeypatch):
     async def boom(*args, **kwargs):
         raise RuntimeError("engine down")
 
-    async def fake_fetch(url, object_name, keywords, title, llm_settings=None, client=None):
+    async def fake_fetch(url, object_name, keywords, title, llm_settings=None, client=None, **kwargs):
         return {
             "url": url,
             "title": title,
@@ -93,7 +93,7 @@ async def test_fetch_failed_not_cached(monkeypatch):
     async def one_url(*args, **kwargs):
         return [{"url": "https://down.example/x", "title": "X"}], "openserp", False
 
-    async def fail_fetch(url, object_name, keywords, title, llm_settings=None, client=None):
+    async def fail_fetch(url, object_name, keywords, title, llm_settings=None, client=None, **kwargs):
         return {
             "url": url,
             "title": title,
@@ -197,8 +197,8 @@ async def test_fetch_and_analyze_prefers_page_date_over_llm(monkeypatch):
 
 
 def test_cache_key_bumped_for_status_change():
-    assert _cache_keywords(["a", "b"]).endswith("#kwv5")
-    assert "#kwv4" not in _cache_keywords(["a"])
+    assert _cache_keywords(["a", "b"]).endswith("#kwv6")
+    assert "#kwv5" not in _cache_keywords(["a"])
 
 
 @pytest.mark.asyncio
@@ -237,7 +237,7 @@ async def test_progress_json_persisted_and_store_cleared(monkeypatch):
     async def one_url(*args, **kwargs):
         return [{"url": "https://ok.example/x", "title": "X"}], "openserp", False
 
-    async def ok_fetch(url, object_name, keywords, title, llm_settings=None, client=None):
+    async def ok_fetch(url, object_name, keywords, title, llm_settings=None, client=None, **kwargs):
         return {
             "url": url, "title": title, "mentions_object": True, "has_keyword": True,
             "keyword_found": "kw", "date_mentioned": None, "publication_date": None,
@@ -283,7 +283,7 @@ async def test_source_mix_stored_on_task(monkeypatch):
             False,
         )
 
-    async def ok_fetch(url, object_name, keywords, title, llm_settings=None, client=None):
+    async def ok_fetch(url, object_name, keywords, title, llm_settings=None, client=None, **kwargs):
         return {
             "url": url, "title": title, "mentions_object": False, "has_keyword": False,
             "keyword_found": None, "date_mentioned": None, "publication_date": None,
@@ -380,7 +380,7 @@ async def test_url_fetch_concurrency_is_capped(monkeypatch):
             False,
         )
 
-    async def slow_fetch(url, object_name, keywords, title, llm_settings=None, client=None):
+    async def slow_fetch(url, object_name, keywords, title, llm_settings=None, client=None, **kwargs):
         nonlocal current, peak
         async with lock:
             current += 1
@@ -421,7 +421,7 @@ async def test_cache_not_shared_across_objects(monkeypatch):
     async def one_url(*args, **kwargs):
         return [{"url": "https://shared.example/post", "title": "X"}], "openserp", False
 
-    async def tracking_fetch(url, object_name, keywords, title, llm_settings=None, client=None):
+    async def tracking_fetch(url, object_name, keywords, title, llm_settings=None, client=None, **kwargs):
         calls.append(object_name)
         return {
             "url": url, "title": title, "mentions_object": True, "has_keyword": False,
@@ -479,7 +479,7 @@ async def test_search_phase_is_written_to_progress(monkeypatch):
             False,
         )
 
-    async def fake_fetch(url, object_name, keywords, title, llm_settings=None, client=None):
+    async def fake_fetch(url, object_name, keywords, title, llm_settings=None, client=None, **kwargs):
         return {
             "url": url, "title": title, "mentions_object": True, "has_keyword": True,
             "keyword_found": "kw", "date_mentioned": None, "publication_date": None,

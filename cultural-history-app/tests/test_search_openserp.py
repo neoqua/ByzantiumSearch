@@ -1,8 +1,7 @@
 import pytest
 import httpx
 from app.config import settings
-from app.search import search_urls
-from app.source_type import UGC_QUERY_MARKERS
+from app.search import search_urls, build_queries
 
 
 @pytest.mark.asyncio
@@ -48,7 +47,7 @@ async def test_openserp_paginates(httpx_mock):
 
     httpx_mock.add_callback(respond, is_reusable=True)
     results = await search_urls("Obj", [], engine="openserp")
-    n_queries = 1 + len(UGC_QUERY_MARKERS)  # object name + one query per UGC marker
+    n_queries = len(build_queries("Obj", []))  # object name + one query per UGC marker
     assert len(calls) == 2 * n_queries
     assert calls == ["0", "30"] * n_queries
     assert len(results) == 4
@@ -86,6 +85,6 @@ async def test_openserp_rounds_capped_by_search_max_pages(httpx_mock):
     httpx_mock.add_callback(respond, is_reusable=True)
     settings.search_max_pages = 2
     results = await search_urls("Obj", [], engine="openserp")
-    n_queries = 1 + len(UGC_QUERY_MARKERS)
+    n_queries = len(build_queries("Obj", []))
     assert len(calls) == 2 * n_queries  # has_more stays True, loop capped by max_pages
     assert len(results) == 1  # all deduped

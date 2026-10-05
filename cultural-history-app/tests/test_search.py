@@ -12,6 +12,12 @@ def test_build_queries_contains_ugc_markers():
     assert "TestObject блог" in queries
     assert "TestObject форум" in queries
     assert "TestObject впечатления" in queries
+    assert "TestObject путеводитель" not in queries
+    assert "TestObject путешествие" not in queries
+
+
+def test_build_queries_all_sources_includes_guides():
+    queries = build_queries("TestObject", ["keyword1"], content_scope="all")
     assert "TestObject путеводитель" in queries
     assert "TestObject путешествие" in queries
 
@@ -172,8 +178,6 @@ async def test_searxng_nonempty_does_not_fall_back(httpx_mock):
 
 @pytest.mark.asyncio
 async def test_openserp_reports_search_progress(httpx_mock):
-    from app.source_type import UGC_QUERY_MARKERS
-
     events = []
 
     async def on_progress(info):
@@ -188,7 +192,7 @@ async def test_openserp_reports_search_progress(httpx_mock):
     httpx_mock.add_callback(respond, is_reusable=True)
     settings.search_max_pages = 1
     await search_urls("Obj", [], engine="openserp", on_progress=on_progress)
-    n_queries = 1 + len(UGC_QUERY_MARKERS)
+    n_queries = len(build_queries("Obj", []))
     assert events
     assert events[0]["engine"] == "openserp"
     assert events[0]["index"] == 1

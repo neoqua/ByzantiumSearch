@@ -22,6 +22,8 @@ class SearchRequest(BaseModel):
     search_engine: Literal["searxng", "openserp"] = Field(
         default_factory=lambda: settings.default_search_engine
     )
+    content_scope: Literal["personal", "all"] = "personal"
+    period_years: int = Field(default=1, ge=0, le=10)
 
 
 class TaskStatus(BaseModel):
@@ -50,6 +52,8 @@ class AnalysisResult(BaseModel):
     source_type_label: Optional[str] = None
     analysis_status: str = "ok"
     date_source: Optional[str] = None
+    content_kind: Optional[str] = None
+    content_kind_label: Optional[str] = None
     relevance_score: float = 0.0
 
 
@@ -68,6 +72,12 @@ class ReportData(BaseModel):
     prefiltered_count: int = 0
     disputed_count: int = 0
     analyzed_count: int = 0
+    out_of_period_count: int = 0
+    not_personal_count: int = 0
+    undated_count: int = 0
+    content_scope: str = "all"
+    period_years: Optional[int] = None
+    period_label: str = "без ограничения"
     results: List[AnalysisResult]
     status: str = "completed"
     search_engine: str = "searxng"

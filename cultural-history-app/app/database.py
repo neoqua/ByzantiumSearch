@@ -23,6 +23,8 @@ async def init_db():
         await conn.run_sync(_ensure_tasks_progress_json)
         await conn.run_sync(_ensure_tasks_stop_requested)
         await conn.run_sync(_ensure_results_date_source)
+        await conn.run_sync(_ensure_tasks_content_filters)
+        await conn.run_sync(_ensure_results_content_kind)
 
 
 def _ensure_column(sync_conn, table, column, ddl):
@@ -73,3 +75,17 @@ def _ensure_tasks_stop_requested(sync_conn):
 def _ensure_results_date_source(sync_conn):
     _ensure_column(sync_conn, "results", "date_source",
                    "ALTER TABLE results ADD COLUMN date_source VARCHAR(10)")
+
+
+def _ensure_tasks_content_filters(sync_conn):
+    _ensure_column(sync_conn, "tasks", "content_scope",
+                   "ALTER TABLE tasks ADD COLUMN content_scope VARCHAR(20)")
+    _ensure_column(sync_conn, "tasks", "period_years",
+                   "ALTER TABLE tasks ADD COLUMN period_years INTEGER")
+    _ensure_column(sync_conn, "tasks", "period_cutoff",
+                   "ALTER TABLE tasks ADD COLUMN period_cutoff VARCHAR(10)")
+
+
+def _ensure_results_content_kind(sync_conn):
+    _ensure_column(sync_conn, "results", "content_kind",
+                   "ALTER TABLE results ADD COLUMN content_kind VARCHAR(20)")
